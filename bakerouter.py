@@ -191,15 +191,14 @@ try:
     message = tk.Label(root,text="Hello")
     message.pack()
 
-    def quitGUI():
+    def handle_button_exit():
         root.quit()
         bakerouter.Stop()
         quit()
 
     tk.Button(root, text="Start", command=bakerouter.Go).pack() #button to start the bake stand
-    tk.Button(root, text="Quit", command=quitGUI).pack() #button to close the window
-    lbl = tk.Label(root, textvariable=bakerouter.message, width=40, height=5, font=('Consolas', 24, 'bold'))
-    lbl.pack()
+    tk.Button(root, text="Quit", command=handle_button_exit).pack() #button to close the window
+ 
     if __name__ == "__main__":
         logging.basicConfig(filename='./myapp.log', level=logging.DEBUG, 
                         format='%(asctime)s %(levelname)s %(name)s %(message)s')
