@@ -1,17 +1,16 @@
-#import u3
+import u3
 import time
 import matplotlib.pyplot as plt
-#from LabJackPython import TCVoltsToTemp, LJ_ttK, eDAC, eAIN
+from LabJackPython import TCVoltsToTemp, LJ_ttK, eDAC, eAIN
 from Logger import *
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import numpy as np
 
 class CapillaryBakeStandGui:
     def __init__(self, root):
         self.root = root
-        #self.test_stand_controller = CapillaryBakeStandController()
-        self.test_stand_controller = CapillaryBakeStandControllerSimulator()
+        self.test_stand_controller = CapillaryBakeStandController()
+        #self.test_stand_controller = CapillaryBakeStandControllerSimulator()
 
         self.state = tk.StringVar()
         self.state_label = tk.Label(root, textvariable=self.state)
