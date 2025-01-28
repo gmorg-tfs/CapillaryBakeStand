@@ -9,30 +9,51 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 class CapillaryBakeStandGui:
     def __init__(self, root):
         self.root = root
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight() - 30
         self.test_stand_controller = CapillaryBakeStandController()
         #self.test_stand_controller = CapillaryBakeStandControllerSimulator()
 
         self.state = tk.StringVar()
         self.state_label = tk.Label(root, textvariable=self.state)
-        self.state_label.grid(row=0, column=0, padx=2, pady=2)
+        self.state_label.grid(row=0, column=0, padx=2, pady=1)
 
         self.time = tk.StringVar()
+        self.time.set(f"Time Left In State: ∞")
         self.time_label = tk.Label(root, textvariable=self.time)
-        self.time_label.grid(row=0, column=1, padx=2, pady=2)
+        self.time_label.grid(row=0, column=1, padx=2, pady=1)
 
         self.cycles = tk.StringVar()
+        self.cycles.set(f"Cycles Completed: {self.test_stand_controller.cycle_count}")
         self.cycles_label = tk.Label(root, textvariable=self.cycles)
-        self.cycles_label.grid(row=0, column=2, padx=2, pady=2)
+        self.cycles_label.grid(row=0, column=2, padx=2, pady=1)
 
         self.start_stop_button_text = tk.StringVar()
         self.start_stop_button_text.set("Start")
         self.start_stop_button = tk.Button(root, textvariable=self.start_stop_button_text, command=self.StartStop)
-        self.start_stop_button.grid(row=0, column=3, padx=2, pady=2)
+        self.start_stop_button.grid(row=0, column=3, padx=2, pady=1)
+
+        self.temperature_readback = tk.StringVar()
+        self.temperature_readback.set(f"Temperature: n/a")
+        self.temperature_readback_label = tk.Label(root, textvariable=self.temperature_readback)
+        self.temperature_readback_label.grid(row=1, column=1, padx=2)
+
+        self.pressure_readback = tk.StringVar()
+        self.pressure_readback.set(f"Pressure: n/a")
+        self.pressure_readback_label = tk.Label(root, textvariable=self.pressure_readback)
+        self.pressure_readback_label.grid(row=1, column=2, padx=2)
+
+
         self.UPDATE_PERIOD = 250 #ms  how often to update gui. control loop is run once per update and will log data at controller specified logging frequency
-        
-        fig, ax1 = plt.subplots()
+        #plt.rcParams["figure.figsize"] = (15, 10)
+
+        fig, ax1 = plt.subplots(figsize=(screen_width/100, screen_height/100), dpi=100)
+        plt.subplots_adjust(top=1, bottom=0.15, left=0.1, right=0.9)
         self.temperature_axis = ax1
         self.pressure_axis = ax1.twinx()
+
+
+
         self.fig = fig
         self.temperature_axis.plot(self.test_stand_controller.temperature_data, color='red')
         self.pressure_axis.semilogy(self.test_stand_controller.pressure_data)
@@ -40,7 +61,7 @@ class CapillaryBakeStandGui:
         self.canvas = FigureCanvasTkAgg(fig, master=root)
         self.canvas.draw()
 
-        self.canvas.get_tk_widget().grid(row=1, column=0, padx=2, pady=2, columnspan=5)
+        self.canvas.get_tk_widget().grid(row=2, column=0, padx=2, pady=2, columnspan=5)
 
         self.update()
 
@@ -62,12 +83,25 @@ class CapillaryBakeStandGui:
        
     def update(self):
         self.test_stand_controller.ControlLoop()
-        self.cycles.set(f"Cycles Completed: {self.test_stand_controller.cycle_count}")
+        self.cycles.set(f"Cycles Completed: {self.test_stand_controller.cycle_count}/{self.test_stand_controller.number_of_cycles_to_run}")
         self.state.set(f"State: {self.current_state_as_string()}")
+
+        if len(self.test_stand_controller.temperature_data) > 0:
+            self.temperature_readback.set(f"Temperature: {self.test_stand_controller.temperature_data[-1]:.2f}")
+            self.pressure_readback.set(f"Pressure: {self.test_stand_controller.pressure_data[-1]:.2f}")
+
         if self.test_stand_controller.current_state == self.test_stand_controller.states["heating"]:
-            self.time.set(f"Time Left In State: {self.test_stand_controller.HEATING_TIME - (time.time() - self.test_stand_controller.start_time):.2f}")
+
+            total_remaining_time_s = self.test_stand_controller.HEATING_TIME - (time.time() - self.test_stand_controller.start_time)
+            minutes = total_remaining_time_s // 60
+            seconds = total_remaining_time_s % 60
+            self.time.set(f"Time Left In State: {int(minutes)}:{int(seconds)}")
         elif self.test_stand_controller.current_state == self.test_stand_controller.states["cooling"]:
-            self.time.set(f"Time Left In State: {self.test_stand_controller.COOLING_TIME - (time.time() - self.test_stand_controller.start_time):.2f}")
+            total_remaining_time_s = self.test_stand_controller.COOLING_TIME - (time.time() - self.test_stand_controller.start_time)
+            minutes = total_remaining_time_s // 60
+            seconds = total_remaining_time_s % 60
+            self.time.set(f"Time Left In State: {int(minutes)}:{int(seconds)}")
+
         self.temperature_axis.cla()
         self.pressure_axis.cla()
         x_axis = [self.test_stand_controller.time[0], self.test_stand_controller.time[(len(self.test_stand_controller.time)-1)//2]  ,self.test_stand_controller.time[-1]]
@@ -88,8 +122,8 @@ class CapillaryBakeStandControllerSimulator:
         self.start_time = 0
         self.states = {"heating": 1, "cooling": 2}
         self.current_state = 0
-        self.HEATING_TIME = 20 #seconds
-        self.COOLING_TIME = 40 #seconds
+        self.HEATING_TIME = 20 *60 #seconds
+        self.COOLING_TIME = 40 *60 #seconds
         self.last_log = 0
         self.LOGGING_PERIOD = 1 #seconds
         self.temperature_data = []
@@ -247,10 +281,12 @@ class CapillaryBakeStandController:
             
 
     def Start(self):
+        self.running = True
         self.StartHeating()
         self.ControlLoop()
 
     def Stop(self):
+        self.running = False
         self.SetVoltageOnDac(self.HEATER_CHANNEL, 0)
         self.SetVoltageOnDac(self.COOLER_CHANNEL, 0)
 
