@@ -152,7 +152,7 @@ class CapillaryBakeStandController:
         self.current_state = 0
         self.pressure_data = []
         self.temperature_data = []
-        self.time = [time.time()]
+        self.time = []
         self.THERMOCOUPLE_VOLTAGE_GAIN = 51
         self.THERMOCOUPLE_VOLTAGE_OFFSET = 1.254 #volts
         self.THERMOCOUPLE_CHANNEL = 6
@@ -210,15 +210,17 @@ class CapillaryBakeStandController:
         pressure_voltage_raw, pressure = self.MeasurePressure()
 
         if len(self.temperature_data) == 0:
-            self.temperature_data.append(temperature)
-            self.pressure_data.append(pressure)
+            self.temperature_data+=[temperature]
+            self.pressure_data+=[pressure]
+            time_struct = time.localtime()
+            self.time += [f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}"]
 
         log_condition1 = time.time() - self.last_log >= self._default_log_frequency
         log_condition2 = self.temperature_data[-1] * self.relative_temperature_change_to_log < abs(temperature - self.temperature_data[-1])
         log_condition3 = self.pressure_data[-1] * self.relative_pressure_change_to_log < abs(pressure - self.pressure_data[-1])
         if  log_condition1 or log_condition2 or log_condition3:
-            self.temperature_data.append(temperature)
-            self.pressure_data.append(pressure)
+            self.temperature_data+=[temperature]
+            self.pressure_data+=[pressure]
             self.logger.log(f"{time.time()}, {temperature_voltage_raw}, {temperature},  {pressure_voltage_raw}, {pressure}")
             self.last_log = time.time()
             time_struct = time.localtime()
@@ -227,7 +229,7 @@ class CapillaryBakeStandController:
             #self.pressure_axis.cla()
             #self.temperature_axis.plot(self.temperature_data, color='red')
             #self.pressure_axis.semilogy(self.pressure_data)
-            plt.pause(1e-9)
+            #plt.pause(1e-9)
 
     def ControlLoop(self):
         try:
@@ -238,14 +240,13 @@ class CapillaryBakeStandController:
                 if self.cycle_count < self.number_of_cycles_to_run:
                     self.StartHeating()
                     
-                self.LogData()
+            self.LogData()
         except Exception as e:
             print(e)
             self.Stop()
             
 
-    def Go(self):
-        self.time = [time.time()]
+    def Start(self):
         self.StartHeating()
         self.ControlLoop()
 
