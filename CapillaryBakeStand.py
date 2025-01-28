@@ -152,6 +152,7 @@ class CapillaryBakeStandController:
         self.current_state = 0
         self.pressure_data = []
         self.temperature_data = []
+        self.time = []
         self.THERMOCOUPLE_VOLTAGE_GAIN = 51
         self.THERMOCOUPLE_VOLTAGE_OFFSET = 1.254 #volts
         self.THERMOCOUPLE_CHANNEL = 6
@@ -220,6 +221,8 @@ class CapillaryBakeStandController:
             self.pressure_data.append(pressure)
             self.logger.log(f"{time.time()}, {temperature_voltage_raw}, {temperature},  {pressure_voltage_raw}, {pressure}")
             self.last_log = time.time()
+            time_struct = time.localtime()
+            self.time += [f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}"]
             #self.temperature_axis.cla()
             #self.pressure_axis.cla()
             #self.temperature_axis.plot(self.temperature_data, color='red')
