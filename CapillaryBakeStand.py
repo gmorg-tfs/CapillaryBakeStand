@@ -152,7 +152,7 @@ class CapillaryBakeStandController:
         self.current_state = 0
         self.pressure_data = []
         self.temperature_data = []
-        self.time = []
+        self.time = [time.time()]
         self.THERMOCOUPLE_VOLTAGE_GAIN = 51
         self.THERMOCOUPLE_VOLTAGE_OFFSET = 1.254 #volts
         self.THERMOCOUPLE_CHANNEL = 6
@@ -245,6 +245,7 @@ class CapillaryBakeStandController:
             
 
     def Go(self):
+        self.time = [time.time()]
         self.StartHeating()
         self.ControlLoop()
 
