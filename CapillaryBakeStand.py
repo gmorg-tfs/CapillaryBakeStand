@@ -1,16 +1,109 @@
-import u3
+#import u3
 import time
-import tkinter as tk
 import matplotlib.pyplot as plt
-import logging
-
-from LabJackPython import TCVoltsToTemp, LJ_ttK, eDAC, eAIN
+#from LabJackPython import TCVoltsToTemp, LJ_ttK, eDAC, eAIN
 from Logger import *
-from math import log10
+import tkinter as tk
 
-class BakerOuter:
+class CapillaryBakeStandGui:
+    def __init__(self, root):
+        self.root = root
+        #self.test_stand_controller = CapillaryBakeStandController()
+        self.test_stand_controller = CapillaryBakeStandControllerSimulator()
+
+        self.state = tk.StringVar()
+        self.state_label = tk.Label(root, textvariable=self.state)
+        self.state_label.pack()
+
+        self.time = tk.StringVar()
+        self.time_label = tk.Label(root, textvariable=self.time)
+        self.time_label.pack()
+
+        self.cycles = tk.StringVar()
+        self.cycles_label = tk.Label(root, textvariable=self.cycles)
+        self.cycles_label.pack()
+
+        self.start_stop_button_text = tk.StringVar()
+        self.start_stop_button_text.set("Start")
+        self.start_stop_button = tk.Button(root, textvariable=self.start_stop_button_text, command=self.StartStop)
+        self.start_stop_button.pack()
+    
+        self.update()
+
+    def StartStop(self):
+        if self.test_stand_controller.running:
+            self.test_stand_controller.Stop()
+            self.start_stop_button_text.set("Start")
+        else:
+            self.test_stand_controller.Start()
+            self.start_stop_button_text.set("Stop")
+
+    def current_state_as_string(self):
+        if self.test_stand_controller.current_state == self.test_stand_controller.states["heating"]:
+            return "Heating"
+        elif self.test_stand_controller.current_state == self.test_stand_controller.states["cooling"]:
+            return "Cooling"
+        else:
+            return "Idle"
+       
+    def update(self):
+        self.test_stand_controller.ControlLoop()
+        self.cycles.set(f"Cycles Completed: {self.test_stand_controller.cycle_count}")
+        self.state.set(f"State: {self.current_state_as_string()}")
+        if self.test_stand_controller.current_state == self.test_stand_controller.states["heating"]:
+            self.time.set(f"Time Left In State: {self.test_stand_controller.HEATING_TIME - (time.time() - self.test_stand_controller.start_time):.2f}")
+        elif self.test_stand_controller.current_state == self.test_stand_controller.states["cooling"]:
+            self.time.set(f"Time Left In State: {self.test_stand_controller.COOLING_TIME - (time.time() - self.test_stand_controller.start_time):.2f}")
+        self.root.after(500, self.update)
+
+
+class CapillaryBakeStandControllerSimulator:
+    def __init__(self):
+        self.running = False
+        self.cycle_count = 0
+        self.number_of_cycles_to_run = 10
+        self.start_time = 0
+        self.states = {"heating": 1, "cooling": 2}
+        self.current_state = 0
+        self.HEATING_TIME = 20 #seconds
+        self.COOLING_TIME = 40 #seconds
+    
+    def Stop(self):
+        self.running = False
+        self.current_state = 0
+        
+    
+    def Start(self):
+        self.running = True
+        self.Go()
+    
+    def Go(self):
+        self.StartHeating()
+        self.ControlLoop()
+    
+    def StartHeating(self):
+        self.current_state = self.states["heating"]
+        self.start_time = time.time()
+
+    def StartCooling(self):
+        self.current_state = self.states["cooling"]
+        self.start_time = time.time()
+
+    def ControlLoop(self):
+        if self.current_state == self.states["heating"] and time.time() - self.start_time >= self.HEATING_TIME:
+            self.StartCooling()
+        elif self.current_state == self.states["cooling"] and time.time() - self.start_time >= self.COOLING_TIME:
+            self.cycle_count += 1
+            if self.cycle_count < self.number_of_cycles_to_run:                   
+                self.StartHeating()
+                    
+
+
+class CapillaryBakeStandController:
     def __init__(self):
         self.device = u3.U3()
+        self.running = False
+        self.cycle_count = 0
         self.number_of_cycles_to_run = 10
         self.start_time = 0
         self.states = {"heating": 1, "cooling": 2}
@@ -136,13 +229,13 @@ class BakerOuter:
 
 
     def ControlLoop(self):
-        cycle_count = 0
+        self.cycle_count = 0
         while True:
             if self.current_state == self.states["heating"] and time.time() - self.start_time >= self.HEATING_TIME:
                 self.StartCooling()
             elif self.current_state == self.states["cooling"] and time.time() - self.start_time >= self.COOLING_TIME:
-                cycle_count += 1
-                if cycle_count >= self.number_of_cycles_to_run:
+                self.cycle_count += 1
+                if self.cycle_count >= self.number_of_cycles_to_run:
                     break                    
                 self.StartHeating()
                     
@@ -159,54 +252,13 @@ class BakerOuter:
         self.SetVoltageOnDac(self.COOLER_CHANNEL, 0)
 
 
-try:
-    bakerouter = BakerOuter()
-    #bakerouter.Go()
-    #bakerouter.Stop()
-    #bakerouter.StartHeating()
-    #bakerouter.StartCooling()
 
-    #print(bakerouter.MeasureTemperature()) 
+if __name__ == "__main__":
+    root = tk.Tk()
+    gui = CapillaryBakeStandGui(root)
+    gui.root.mainloop()
+    #bakerouter = CapillaryBakeStandController()
+    #bakerouter.Go()
     #print(bakerouter.MeasurePressure())
     #bakerouter.device.setDefaults()
-
-
-    # GUI 
-    root = tk.Tk()
-    root.title('Jupiter Capillary Bake Stand')
-    window_width = 300
-    window_height = 600
-
-    # get the screen dimension
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-
-    # find the center point
-    center_x = int(screen_width/2 - window_width / 2)
-    center_y = int(screen_height/2 - window_height / 2)
-
-    # set the position of the window to the center of the screen
-    root.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
-
-    message = tk.Label(root,text="Hello")
-    message.pack()
-
-    def handle_button_exit():
-        root.quit()
-        bakerouter.Stop()
-        quit()
-
-    tk.Button(root, text="Start", command=bakerouter.Go).pack() #button to start the bake stand
-    tk.Button(root, text="Quit", command=handle_button_exit).pack() #button to close the window
- 
-    if __name__ == "__main__":
-        logging.basicConfig(filename='./myapp.log', level=logging.DEBUG, 
-                        format='%(asctime)s %(levelname)s %(name)s %(message)s')
-        logger=logging.getLogger(__name__)
-
-except Exception as e:
-    Logger.error("An error occurred: %s", e)
-    bakerouter.Stop()
-    quit()
-
-root.mainloop()
+    #bakerouter.StartCooling()
