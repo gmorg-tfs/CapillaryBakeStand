@@ -202,7 +202,7 @@ try:
     if __name__ == "__main__":
         logging.basicConfig(filename='./myapp.log', level=logging.DEBUG, 
                         format='%(asctime)s %(levelname)s %(name)s %(message)s')
-        logger=logging.getLogger(__name__)
+        logger=logging.getLogger(__name__) ##
 
 except Exception as e:
     Logger.error("An error occurred: %s", e)
