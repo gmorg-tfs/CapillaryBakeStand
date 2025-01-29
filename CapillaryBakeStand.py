@@ -1,18 +1,19 @@
-import u3
+#import u3
 import time
 import matplotlib.pyplot as plt
-from LabJackPython import TCVoltsToTemp, LJ_ttK, eDAC, eAIN
+#from LabJackPython import TCVoltsToTemp, LJ_ttK, eDAC, eAIN
 from Logger import *
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import sys
 
 class CapillaryBakeStandGui:
     def __init__(self, root):
         self.root = root
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight() - 30
-        self.test_stand_controller = CapillaryBakeStandController()
-        #self.test_stand_controller = CapillaryBakeStandControllerSimulator()
+        #self.test_stand_controller = CapillaryBakeStandController()
+        self.test_stand_controller = CapillaryBakeStandControllerSimulator()
 
         self.state = tk.StringVar()
         self.state_label = tk.Label(root, textvariable=self.state)
@@ -63,7 +64,13 @@ class CapillaryBakeStandGui:
 
         self.canvas.get_tk_widget().grid(row=2, column=0, padx=2, pady=2, columnspan=5)
 
+        root.protocol('WM_DELETE_WINDOW', self.exit)
+
         self.update()
+
+    def exit(self):
+        self.test_stand_controller.Stop()
+        quit()
 
     def StartStop(self):
         if self.test_stand_controller.running:
@@ -88,7 +95,7 @@ class CapillaryBakeStandGui:
 
         if len(self.test_stand_controller.temperature_data) > 0:
             self.temperature_readback.set(f"Temperature: {self.test_stand_controller.temperature_data[-1]:.2f}")
-            self.pressure_readback.set(f"Pressure: {self.test_stand_controller.pressure_data[-1]:.2f}")
+            self.pressure_readback.set(f"Pressure: {self.test_stand_controller.pressure_data[-1]:.2e}")
 
         if self.test_stand_controller.current_state == self.test_stand_controller.states["heating"]:
 
@@ -101,6 +108,8 @@ class CapillaryBakeStandGui:
             minutes = total_remaining_time_s // 60
             seconds = total_remaining_time_s % 60
             self.time.set(f"Time Left In State: {int(minutes)}:{int(seconds)}")
+        else:
+            self.time.set(f"Time Left In State: ∞")
 
         self.temperature_axis.cla()
         self.pressure_axis.cla()
@@ -287,6 +296,7 @@ class CapillaryBakeStandController:
 
     def Stop(self):
         self.running = False
+        self.current_state = 0
         self.SetVoltageOnDac(self.HEATER_CHANNEL, 0)
         self.SetVoltageOnDac(self.COOLER_CHANNEL, 0)
 
@@ -296,3 +306,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     gui = CapillaryBakeStandGui(root)
     gui.root.mainloop()
+    
