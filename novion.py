@@ -5,15 +5,22 @@ import time
 import serial
 import numpy as np
 import matplotlib.pyplot as plt
+from Logger import * 
 """
 so it looks like you connect computer to the device via bluetooth (like you would connect to wifi) and then use like serial port
 in device manager look under bluetooth and you should see novion and then in COM ports you should see standard serial over blutooth link if not try turning computer blutooth off and on 
 or remove device and try to rediscover and connect
 """
+mass_start = 1
+mass_end = 75
+
 com_port = "COM5"
 baud_rate = 115200
 serial_port = serial.Serial(com_port, baud_rate, timeout=1)
-
+logger = Logger(_base_path="C:\\Data\\toaster\\",
+                _file_name_base="toaster_data_",
+                _file_extension=".csv",
+                _header= [int(m) for m in np.arange(mass_start,mass_end+1,1)])
 
 """
 OUR_DEVICE_ADDRESS = "00:06:66:75:98:66"
@@ -156,7 +163,7 @@ def request_next_point(serial_port):
 
 
 def set_scan_start(serial_port, mass_number):
-    if mass_number < 0 or mass_number < 300:
+    if mass_number < 0 or mass_number > 300:
         print("Invalid mass number")
         return 
     command = 0x81
@@ -165,7 +172,7 @@ def set_scan_start(serial_port, mass_number):
     send_command(serial_port, command, subcommand, payload)
 
 def set_scan_end(serial_port, mass_number):
-    if mass_number < 0 or mass_number < 300:
+    if mass_number < 0 or mass_number > 300:
         print("Invalid mass number")
         return 
     command = 0x81
@@ -178,22 +185,22 @@ def get_scan_start(serial_port):
     command = 0x81
     subcommand = 0x14
     data = send_command(serial_port, command, subcommand)
-    mass_number, = struct.unpack('<f', data)
+    mass_number, = struct.unpack('<f', data[:4])
     return mass_number
 
 def get_scan_end(serial_port):
     command = 0x81
     subcommand = 0x15
     data = send_command(serial_port, command, subcommand)
-    mass_number, = struct.unpack('<f', data)
+    mass_number, = struct.unpack('<f', data[:4])
     return mass_number
 
 
 def set_scan_range(serial_port, start_mass_number, end_mass_number):
     set_scan_start(serial_port, start_mass_number)
     set_scan_end(serial_port, end_mass_number)
-    assert get_scan_start(serial_port) == start_mass_number
-    assert get_scan_end(serial_port) == end_mass_number
+    #assert get_scan_start(serial_port) == start_mass_number
+    #assert get_scan_end(serial_port) == end_mass_number
 
 
 """ 
@@ -205,12 +212,12 @@ end = time.time()
 print(f"Time taken: {end - start}")
  """
 
-set_scan_range(serial_port, 1, 75)
+#set_scan_range(serial_port, 1, 75)
 
 intensity_over_time = {}
 
-intensitys = np.zeros(300)
-mass_numbers = np.zeros(300)
+intensitys = np.zeros(mass_end-mass_start+1)
+mass_numbers = np.zeros(mass_end-mass_start+1)
 while True:
     n = request_number_of_points_available(serial_port)
     for i in range(n):
@@ -222,17 +229,18 @@ while True:
         plt.title(tuple_number)
         plt.pause(1e-9)
 
-    idx = np.argsort(intensitys)
+    logger.log(int(i) for i in intensitys)
+"""     idx = np.argsort(intensitys)
     most_intense = mass_numbers[idx[-5:]]
     mass_with_most_intensity = mass_numbers[idx[-5:]]
 
     for i, m in zip(most_intense, mass_with_most_intensity):
-        if str(m) in intensity_over_time:
-            intensity_over_time[str(m)] += [i]
+        if int(m) in intensity_over_time:
+            intensity_over_time[int(m)] += [i]
         else:
-            intensity_over_time[str(m)] = [i]
+            intensity_over_time[int(m)] = [i]
 
-    print(intensity_over_time)
+    print(intensity_over_time[18]) """
     #print(f"Top 5 peaks: {mass_numbers[idx[-5:]]}")
     #print(f"Top 5 intensities: {intensitys[i]}")
     #break
