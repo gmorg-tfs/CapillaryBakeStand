@@ -155,16 +155,46 @@ def request_next_point(serial_port):
     return ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number
 
 
-#print(request_next_point(serial_port))
-""" print(request_number_of_points_available(serial_port))
-print(request_next_point(serial_port))
-print(request_next_point(serial_port))
-print(request_next_point(serial_port))
-print(request_next_point(serial_port))
- """
-#print(request_next_point(serial_port))
-#print(request_number_of_points_available(serial_port))
-#print(request_pressure(serial_port))
+def set_scan_start(serial_port, mass_number):
+    if mass_number < 0 or mass_number < 300:
+        print("Invalid mass number")
+        return 
+    command = 0x81
+    subcommand = 0x11
+    payload = struct.pack('<f', mass_number)
+    send_command(serial_port, command, subcommand, payload)
+
+def set_scan_end(serial_port, mass_number):
+    if mass_number < 0 or mass_number < 300:
+        print("Invalid mass number")
+        return 
+    command = 0x81
+    subcommand = 0x12
+    payload = struct.pack('<f', mass_number)
+    send_command(serial_port, command, subcommand, payload)
+
+
+def get_scan_start(serial_port):
+    command = 0x81
+    subcommand = 0x14
+    data = send_command(serial_port, command, subcommand)
+    mass_number, = struct.unpack('<f', data)
+    return mass_number
+
+def get_scan_end(serial_port):
+    command = 0x81
+    subcommand = 0x15
+    data = send_command(serial_port, command, subcommand)
+    mass_number, = struct.unpack('<f', data)
+    return mass_number
+
+
+def set_scan_range(serial_port, start_mass_number, end_mass_number):
+    set_scan_start(serial_port, start_mass_number)
+    set_scan_end(serial_port, end_mass_number)
+    assert get_scan_start(serial_port) == start_mass_number
+    assert get_scan_end(serial_port) == end_mass_number
+
 
 """ 
 start = time.time()
@@ -175,6 +205,7 @@ end = time.time()
 print(f"Time taken: {end - start}")
  """
 
+set_scan_range(serial_port, 1, 75)
 
 intensity_over_time = {}
 
@@ -184,25 +215,25 @@ while True:
     n = request_number_of_points_available(serial_port)
     for i in range(n):
         plt.cla()
-        r = request_next_point(serial_port)
-        intensitys[r[4]] = r[2]
-        mass_numbers[r[4]] = r[3]
-        plt.plot(mass_numbers[:r[4]], intensitys[:r[4]])
-        plt.title(r[4])
+        D_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = request_next_point(serial_port)
+        intensitys[tuple_number] = intensity
+        mass_numbers[tuple_number] = mass_number
+        plt.plot(mass_numbers[:tuple_number], intensitys[:tuple_number]) #only plot points that have data
+        plt.title(tuple_number)
         plt.pause(1e-9)
+
     idx = np.argsort(intensitys)
-    for i, mn in enumerate(mass_numbers[idx[-5:]]):
-        if 
-            intensity_over_time[int(mn)] = []
+    most_intense = mass_numbers[idx[-5:]]
+    mass_with_most_intensity = mass_numbers[idx[-5:]]
+
+    for i, m in zip(most_intense, mass_with_most_intensity):
+        if str(m) in intensity_over_time:
+            intensity_over_time[str(m)] += [i]
         else:
-            intensity_over_time[int(mn)] += [intensitys[idx[-i:]]]
-    print(intensity_over_time[18])
+            intensity_over_time[str(m)] = [i]
+
+    print(intensity_over_time)
     #print(f"Top 5 peaks: {mass_numbers[idx[-5:]]}")
     #print(f"Top 5 intensities: {intensitys[i]}")
     #break
 plt.show()
- 
-#find_and_connect()
-#while True:
-
-#print(request_pressure1(serial_port))
