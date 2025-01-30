@@ -1,5 +1,3 @@
-# simple inquiry example
-#import bluetooth
 import struct
 import time 
 import serial
@@ -17,10 +15,16 @@ mass_end = 75
 com_port = "COM5"
 baud_rate = 115200
 serial_port = serial.Serial(com_port, baud_rate, timeout=1)
+
+header = ""
+for i in range(mass_start, mass_end+1):
+    header += f"{i},"
+header = header[:-1]
+
 logger = Logger(_base_path="C:\\Data\\toaster\\",
                 _file_name_base="toaster_data_",
                 _file_extension=".csv",
-                _header= [int(m) for m in np.arange(mass_start,mass_end+1,1)])
+                _header= header)
 
 """
 OUR_DEVICE_ADDRESS = "00:06:66:75:98:66"
@@ -102,26 +106,7 @@ def parse_response(response):
     if crc_received != crc_calculated:
         raise ValueError("CRC mismatch")
     payload = response[6:22]
-    #payload = response[6:22].hex()
-    #data = [hex(b) for b in response[6:22]]
-    #pressure, = struct.unpack('<f', payload[:4])
     return payload
-    #return data
-
-def request_pressure1(serial_port):
-    command = 0x20
-    subcommand = 0x08
-    payload = struct.pack('<B', 0x00)
-    #print(f"Command: {command}, Subcommand: {subcommand}, Payload: {payload.hex()}")
-    frame = build_frame(command, subcommand, payload)
-    serial_port.write(frame)
-    time.sleep(0.1)
-    response = serial_port.read(24)
-    if not response:
-        print("No response received")
-        return None
-    #print(f"Response received: {response}")
-    return parse_response(response)
 
 def send_command(serial_port, command, subcommand, payload=struct.pack('<B', 0x00)):
     #print(f"Command: {command}, Subcommand: {subcommand}, Payload: {payload.hex()}")
@@ -146,12 +131,11 @@ def request_pressure(serial_port):
     pressure, = struct.unpack('<f', data[:4])
     return pressure
 
-
 def request_number_of_points_available(serial_port):
     command = 0x81
     subcommand = 0x3f
     data = send_command(serial_port, command, subcommand)
-    n, = struct.unpack('<i', data[0:4])
+    n, = struct.unpack('<i', data[:4])
     return n
 
 def request_next_point(serial_port):
@@ -222,14 +206,21 @@ while True:
     n = request_number_of_points_available(serial_port)
     for i in range(n):
         plt.cla()
-        D_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = request_next_point(serial_port)
+        ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = request_next_point(serial_port)
         intensitys[tuple_number] = intensity
         mass_numbers[tuple_number] = mass_number
         plt.plot(mass_numbers[:tuple_number], intensitys[:tuple_number]) #only plot points that have data
+        plt.xlabel("Mass (amu)")
+        plt.ylabel("Intensity")
         plt.title(tuple_number)
         plt.pause(1e-9)
 
-    logger.log(int(i) for i in intensitys)
+    data_str = ""
+    for i in intensitys:
+        data_str += f"{i},"
+    data_str = data_str[:-1]
+
+    logger.log(data_str)
 """     idx = np.argsort(intensitys)
     most_intense = mass_numbers[idx[-5:]]
     mass_with_most_intensity = mass_numbers[idx[-5:]]
