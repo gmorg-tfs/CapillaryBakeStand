@@ -1,19 +1,20 @@
-#import u3
+import u3
 import time
 import matplotlib.pyplot as plt
-#from LabJackPython import TCVoltsToTemp, LJ_ttK, eDAC, eAIN
+from LabJackPython import TCVoltsToTemp, LJ_ttK, eDAC, eAIN
 from Logger import *
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import sys
+import threading
+from novion import NovionRGA
 
 class CapillaryBakeStandGui:
     def __init__(self, root):
         self.root = root
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight() - 30
-        self.test_stand_controller = CapillaryBakeStandController()
-        #self.test_stand_controller = CapillaryBakeStandControllerSimulator()
+        #self.test_stand_controller = CapillaryBakeStandController()
+        self.test_stand_controller = CapillaryBakeStandControllerSimulator()
 
         self.state = tk.StringVar()
         self.state_label = tk.Label(root, textvariable=self.state)
@@ -216,6 +217,15 @@ class CapillaryBakeStandController:
         self.relative_pressure_change_to_log = 0.02
         self.fig, self.temperature_axis = plt.subplots()
         self.pressure_axis = self.temperature_axis.twinx()
+        self.rga_thread = threading.Thread(target=self.rga_scan)
+        self.novion = NovionRGA()
+
+    def rga_scan(self):
+        self.novion.scan(self.temperature_data)
+
+    def do_scan(self):
+        self.rga_thread = threading.Thread(target=self.rga_scan)
+        self.rga_thread.start()
 
     def MeasureTemperature(self):
         voltage_raw = eAIN(self.device.handle, self.THERMOCOUPLE_CHANNEL)
@@ -235,6 +245,7 @@ class CapillaryBakeStandController:
         eDAC(self.device.handle, channel, voltage)
 
     def StartHeating(self):
+        self.do_scan()
         self.current_state = self.states["heating"]
         #print("Heating")
         self.SetVoltageOnDac(self.COOLER_CHANNEL, 0)
@@ -242,6 +253,7 @@ class CapillaryBakeStandController:
         self.start_time = time.time()
 
     def StartCooling(self):
+        self.do_scan()
         self.current_state = self.states["cooling"]
         #print("Cooling")
         self.SetVoltageOnDac(self.HEATER_CHANNEL, 0)
