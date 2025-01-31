@@ -266,6 +266,7 @@ class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
 
 import u3
 from LabJackPython import TCVoltsToTemp, LJ_ttK, eDAC, eAIN
+import signal
 class CapillaryBakeStandController:
     def __init__(self):
         self.device = u3.U3()
@@ -278,6 +279,13 @@ class CapillaryBakeStandController:
         self.HEATER_VOLTAGE = 5 #volts
         self.COOLER_VOLTAGE = 5 #volts
         self.novion = NovionRGA()
+
+        signal.signal(signal.SIGINT, self.EmergencyStop)
+        signal.signal(signal.SIGTERM, self.EmergencyStop)
+
+    def EmergencyStop(self, signum, frame):
+        self.SetVoltageOnDac(self.HEATER_CHANNEL, 0)
+        self.SetVoltageOnDac(self.COOLER_CHANNEL, self.COOLER_VOLTAGE)
 
     def MeasureTemperature(self):
         voltage_raw = eAIN(self.device.handle, self.THERMOCOUPLE_CHANNEL)
