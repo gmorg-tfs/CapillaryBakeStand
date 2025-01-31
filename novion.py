@@ -4,12 +4,15 @@ import serial
 import numpy as np
 import matplotlib.pyplot as plt
 from Logger import * 
+import random
 
-class NovionRGA:
-    def __init__(self, com_port="COM5", baud_rate=115200):
-        self.serial_port = serial.Serial(com_port, baud_rate, timeout=1)
+class NovionBase:
+    def __init__(self):
         self.mass_start = 1
-        self.mass_end = 75
+        self.mass_end = 75  
+        self.intensitys = np.zeros(self.mass_end-self.mass_start+1)
+        self.mass_numbers = np.zeros(self.mass_end-self.mass_start+1)
+
         self.header = "Time (s),pressure (mbar),Temperature (C),"
         for i in range(self.mass_start, self.mass_end+1):
             self.header += f"{i},"
@@ -19,9 +22,55 @@ class NovionRGA:
                              _file_name_base="toaster_rga_data_",
                              _file_extension=".csv",
                              _header= self.header)
-        
-        self.intensitys = np.zeros(self.mass_end-self.mass_start+1)
-        self.mass_numbers = np.zeros(self.mass_end-self.mass_start+1)
+    def request_pressure(self):
+        Exception("Not Implemented")
+    def request_number_of_points_available(self):
+        Exception("Not Implemented")
+    def request_next_point(self):
+        Exception("Not Implemented")
+
+    def scan(self, temperature_data):
+        pressure = self.request_pressure()
+        temperature = temperature_data[-1]
+        n = self.request_number_of_points_available()
+        for _ in range(n):
+            ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = self.request_next_point()
+            self.intensitys[tuple_number] = intensity
+            self.mass_numbers[tuple_number] = mass_number
+        data_str = f"{time.time()},{pressure},{temperature},"
+        for i in self.intensitys:
+            data_str += f"{i},"
+        data_str = data_str[:-1]
+        self.logger.log(data_str)
+
+class NovionMock(NovionBase):
+    def __init__(self):
+        super().__init__()
+        intensitys_str = "0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.038124219	0.001027685	0.001132719	0.003903615	0.016281854	0.044268493	0.062740408	0.048465732	0.026517047	0.018924827	0.016276499	0.012127393	0.00686728	0.003944158	0.002492747	0.001822589	0.00160905	0.001741622	0.002057489	0.002830798	0.004359233	0.006089322	0.006777898	0.005983817	0.004155815	0.002598252	0.0016543	0.001040925	0.000689752	0.000458384	0.000341875	0.000267734	0.000194416	0.000169114	0.000166289	0.000170643	0.000152065	0.000182926	0.000235696	0.000287523	0.000365028	0.000426985	0.000430872	0.000426631	0.000375629	0.000302364	0.000240171	0.000200477	0.000179864	0.000121794	0.000129568	0.000105774	0.000104125	0.000105303"
+        self.masses = np.arange(1, 76)
+        self.intensitys = np.array([float(i) for i in intensitys_str.split("\t")])
+        self.current_index = 0
+
+    def request_pressure(self):
+        time.sleep(random.random() % 0.1)
+        return 1e-6 * random.random() * 10
+
+    def request_number_of_points_available(self):
+        time.sleep(random.random() % 0.1)
+        return 75
+
+    def request_next_point(self):
+        i = self.intensitys[self.current_index]
+        m = self.masses[self.current_index]
+        t = self.current_index
+        self.current_index += 1
+        self.current_index %= 75
+        return 0, 0, i, m, t
+
+class NovionRGA(NovionBase):
+    def __init__(self, com_port="COM5", baud_rate=115200):
+        super().__init__()
+        self.serial_port = serial.Serial(com_port, baud_rate, timeout=1)
 
     def crc16_update(self, crc, a):
         i = 8
@@ -137,19 +186,7 @@ class NovionRGA:
         #assert get_scan_start(serial_port) == start_mass_number
         #assert get_scan_end(serial_port) == end_mass_number
 
-    def scan(self, temperature_data):
-        pressure = self.request_pressure()
-        temperature = temperature_data[-1]
-        n = self.request_number_of_points_available()
-        for _ in range(n):
-            ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = self.request_next_point()
-            self.intensitys[tuple_number] = intensity
-            self.mass_numbers[tuple_number] = mass_number
-        data_str = f"{time.time()},{pressure},{temperature},"
-        for i in self.intensitys:
-            data_str += f"{i},"
-        data_str = data_str[:-1]
-        self.logger.log(data_str)
+
 
 """ 
 start = time.time()

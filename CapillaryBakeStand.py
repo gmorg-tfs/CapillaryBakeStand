@@ -1,12 +1,10 @@
-import u3
 import time
 import matplotlib.pyplot as plt
-from LabJackPython import TCVoltsToTemp, LJ_ttK, eDAC, eAIN
 from Logger import *
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import threading
-from novion import NovionRGA
+from novion import *
 
 class CapillaryBakeStandGui:
     def __init__(self, root):
@@ -45,16 +43,12 @@ class CapillaryBakeStandGui:
         self.pressure_readback_label = tk.Label(root, textvariable=self.pressure_readback)
         self.pressure_readback_label.grid(row=1, column=2, padx=2)
 
-
         self.UPDATE_PERIOD = 250 #ms  how often to update gui. control loop is run once per update and will log data at controller specified logging frequency
-        #plt.rcParams["figure.figsize"] = (15, 10)
 
         fig, ax1 = plt.subplots(figsize=(screen_width/100, screen_height/100), dpi=100)
         plt.subplots_adjust(top=1, bottom=0.15, left=0.1, right=0.9)
         self.temperature_axis = ax1
         self.pressure_axis = ax1.twinx()
-
-
 
         self.fig = fig
         self.temperature_axis.plot(self.test_stand_controller.temperature_data, color='red')
@@ -124,35 +118,55 @@ class CapillaryBakeStandGui:
         self.root.after(self.UPDATE_PERIOD, self.update)
 
 
-class CapillaryBakeStandControllerSimulator:
+class CapillaryBakeStandControllerBase:
     def __init__(self):
+        #state
         self.running = False
         self.cycle_count = 0
         self.number_of_cycles_to_run = 10
         self.start_time = 0
         self.states = {"heating": 1, "cooling": 2}
         self.current_state = 0
+        #process times
         self.HEATING_TIME = 20 *60 #seconds
         self.COOLING_TIME = 40 *60 #seconds
-        self.last_log = 0
-        self.LOGGING_PERIOD = 1 #seconds
+        #data
         self.temperature_data = []
         self.pressure_data = []
         self.time = []
-    
+        #logging
+        self.logger = Logger(_base_path="C:\\Data\\toaster\\",
+                             _file_name_base="toaster_data_",
+                             _file_extension=".csv",
+                             _header="Time, Temperature Voltage (V), Temperature (C), Pressure Voltage (V), Pressure (mbar)")
+        self.LOGGING_PERIOD = 1 #seconds
+        self.last_log = 0
+        self.relative_temperature_change_to_log = 0.02
+        self.relative_pressure_change_to_log = 0.02
+        #novion 
+        self.novion = NovionMock()
+        self.last_rga_scan = 0
+        self.RGA_SCAN_PERIOD = 10 #seconds
+        self.rga_thread = threading.Thread(target=self.rga_scan)
+
     def Stop(self):
-        self.running = False
-        self.current_state = 0
-        
-    
+        if self.cycle_count < self.number_of_cycles_to_run:
+            self.current_state = self.states["cooling"]
+            self.cycle_count = self.number_of_cycles_to_run #will cool for cooling time and then stop
+        else:
+            self.running = False
+            self.current_state = 0
+            self.TurnOffHeaterAndCooler()
+
     def Start(self):
+        self.cycle_count = 0
         self.running = True
         self.Go()
     
     def Go(self):
         self.StartHeating()
         self.ControlLoop()
-    
+
     def StartHeating(self):
         self.current_state = self.states["heating"]
         self.start_time = time.time()
@@ -160,7 +174,7 @@ class CapillaryBakeStandControllerSimulator:
     def StartCooling(self):
         self.current_state = self.states["cooling"]
         self.start_time = time.time()
-
+    
     def ControlLoop(self):
         try:
             if self.current_state == self.states["heating"] and time.time() - self.start_time >= self.HEATING_TIME:
@@ -169,34 +183,92 @@ class CapillaryBakeStandControllerSimulator:
                 self.cycle_count += 1
                 if self.cycle_count < self.number_of_cycles_to_run:
                     self.StartHeating()
+                else:
+                    self.Stop()
                     
             self.LogData()
         except Exception as e:
             print(e)
             self.Stop()
 
+    def rga_scan(self):
+        self.novion.scan(self.temperature_data)
+
+    def do_scan(self):
+        self.rga_thread = threading.Thread(target=self.rga_scan)
+        self.rga_thread.start()
+
     def LogData(self):
-        if time.time() - self.last_log >= self.LOGGING_PERIOD:
-            self.temperature_data += [2]
-            self.pressure_data += [3]
+        temperature_voltage_raw, temperature = self.MeasureTemperature()
+        pressure_voltage_raw, pressure = self.MeasurePressure()
+
+        if len(self.temperature_data) == 0:
+            self.temperature_data+=[temperature]
+            self.pressure_data+=[pressure]
             time_struct = time.localtime()
             self.time += [f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}"]
+
+        log_condition1 = time.time() - self.last_log >= self.LOGGING_PERIOD
+        log_condition2 = self.temperature_data[-1] * self.relative_temperature_change_to_log < abs(temperature - self.temperature_data[-1])
+        log_condition3 = self.pressure_data[-1] * self.relative_pressure_change_to_log < abs(pressure - self.pressure_data[-1])
+        if  log_condition1 or log_condition2 or log_condition3:
+            self.temperature_data+=[temperature]
+            self.pressure_data+=[pressure]
+            self.logger.log(f"{time.time()}, {temperature_voltage_raw}, {temperature},  {pressure_voltage_raw}, {pressure}")
             self.last_log = time.time()
-                    
+            time_struct = time.localtime()
+            self.time += [f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}"]
+        
+        if time.time() - self.last_rga_scan >= self.RGA_SCAN_PERIOD:
+            self.do_scan()
+            self.last_rga_scan = time.time()
 
+    def MeasureTemperature(self):
+        Exception("Not Implemented")
 
+    def MeasurePressure(self):
+        Exception("Not Implemented")
+    
+    def TurnOffHeaterAndCooler(self):
+        Exception("Not Implemented")
+        
+
+class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
+    def __init__(self):
+        super().__init__()
+        self.HEATING_TIME = 60 #seconds
+        self.COOLING_TIME = 80 #seconds
+
+    def MeasureTemperature(self):
+        if len(self.temperature_data) == 0:
+            return 1.26, 25
+        delta = random.random()
+        if self.current_state == self.states["heating"]:
+            return 1.26, self.temperature_data[-1] + delta
+        elif self.current_state == self.states["cooling"]:
+            return 1.26, self.temperature_data[-1] - delta
+        else:
+            return 1.26, self.temperature_data[-1]
+
+    def MeasurePressure(self):
+        if len(self.pressure_data) == 0:
+            return 1.26, 1e-6
+        delta = random.random() * 1e-6 * 10
+        if self.current_state == self.states["heating"]:
+            return 1.26, self.pressure_data[-1] + delta
+        elif self.current_state == self.states["cooling"]:
+            return 1.26, self.pressure_data[-1] - delta
+        else:
+            return 1.26, self.pressure_data[-1]
+
+    def TurnOffHeaterAndCooler(self):
+        pass
+
+import u3
+from LabJackPython import TCVoltsToTemp, LJ_ttK, eDAC, eAIN
 class CapillaryBakeStandController:
     def __init__(self):
         self.device = u3.U3()
-        self.running = False
-        self.cycle_count = 0
-        self.number_of_cycles_to_run = 10
-        self.start_time = 0
-        self.states = {"heating": 1, "cooling": 2}
-        self.current_state = 0
-        self.pressure_data = []
-        self.temperature_data = []
-        self.time = []
         self.THERMOCOUPLE_VOLTAGE_GAIN = 51
         self.THERMOCOUPLE_VOLTAGE_OFFSET = 1.254 #volts
         self.THERMOCOUPLE_CHANNEL = 6
@@ -205,27 +277,7 @@ class CapillaryBakeStandController:
         self.COOLER_CHANNEL = 1
         self.HEATER_VOLTAGE = 5 #volts
         self.COOLER_VOLTAGE = 5 #volts
-        self.HEATING_TIME = 20 * 60 #seconds
-        self.COOLING_TIME = 40 * 60 #seconds
-        self.logger = Logger(_base_path="C:\\Data\\toaster\\",
-                             _file_name_base="toaster_data_",
-                             _file_extension=".csv",
-                             _header="Time, Temperature Voltage (V), Temperature (C), Pressure Voltage (V), Pressure (mbar)")
-        self._default_log_frequency = 1 #seconds
-        self.last_log = 0
-        self.relative_temperature_change_to_log = 0.02
-        self.relative_pressure_change_to_log = 0.02
-        self.fig, self.temperature_axis = plt.subplots()
-        self.pressure_axis = self.temperature_axis.twinx()
-        self.rga_thread = threading.Thread(target=self.rga_scan)
         self.novion = NovionRGA()
-
-    def rga_scan(self):
-        self.novion.scan(self.temperature_data)
-
-    def do_scan(self):
-        self.rga_thread = threading.Thread(target=self.rga_scan)
-        self.rga_thread.start()
 
     def MeasureTemperature(self):
         voltage_raw = eAIN(self.device.handle, self.THERMOCOUPLE_CHANNEL)
@@ -245,70 +297,16 @@ class CapillaryBakeStandController:
         eDAC(self.device.handle, channel, voltage)
 
     def StartHeating(self):
-        self.do_scan()
-        self.current_state = self.states["heating"]
-        #print("Heating")
+        super().StartHeating()
         self.SetVoltageOnDac(self.COOLER_CHANNEL, 0)
         self.SetVoltageOnDac(self.HEATER_CHANNEL, self.HEATER_VOLTAGE)
-        self.start_time = time.time()
 
     def StartCooling(self):
-        self.do_scan()
-        self.current_state = self.states["cooling"]
-        #print("Cooling")
+        super.StartCooling()
         self.SetVoltageOnDac(self.HEATER_CHANNEL, 0)
         self.SetVoltageOnDac(self.COOLER_CHANNEL, self.COOLER_VOLTAGE)
-        self.start_time = time.time()
-    
-    def LogData(self):
-        temperature_voltage_raw, temperature = self.MeasureTemperature()
-        pressure_voltage_raw, pressure = self.MeasurePressure()
 
-        if len(self.temperature_data) == 0:
-            self.temperature_data+=[temperature]
-            self.pressure_data+=[pressure]
-            time_struct = time.localtime()
-            self.time += [f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}"]
-
-        log_condition1 = time.time() - self.last_log >= self._default_log_frequency
-        log_condition2 = self.temperature_data[-1] * self.relative_temperature_change_to_log < abs(temperature - self.temperature_data[-1])
-        log_condition3 = self.pressure_data[-1] * self.relative_pressure_change_to_log < abs(pressure - self.pressure_data[-1])
-        if  log_condition1 or log_condition2 or log_condition3:
-            self.temperature_data+=[temperature]
-            self.pressure_data+=[pressure]
-            self.logger.log(f"{time.time()}, {temperature_voltage_raw}, {temperature},  {pressure_voltage_raw}, {pressure}")
-            self.last_log = time.time()
-            time_struct = time.localtime()
-            self.time += [f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}"]
-            #self.temperature_axis.cla()
-            #self.pressure_axis.cla()
-            #self.temperature_axis.plot(self.temperature_data, color='red')
-            #self.pressure_axis.semilogy(self.pressure_data)
-            #plt.pause(1e-9)
-
-    def ControlLoop(self):
-        try:
-            if self.current_state == self.states["heating"] and time.time() - self.start_time >= self.HEATING_TIME:
-                self.StartCooling()
-            elif self.current_state == self.states["cooling"] and time.time() - self.start_time >= self.COOLING_TIME:
-                self.cycle_count += 1
-                if self.cycle_count < self.number_of_cycles_to_run:
-                    self.StartHeating()
-                    
-            self.LogData()
-        except Exception as e:
-            print(e)
-            self.Stop()
-            
-
-    def Start(self):
-        self.running = True
-        self.StartHeating()
-        self.ControlLoop()
-
-    def Stop(self):
-        self.running = False
-        self.current_state = 0
+    def TurnOffHeaterAndCooler(self):
         self.SetVoltageOnDac(self.HEATER_CHANNEL, 0)
         self.SetVoltageOnDac(self.COOLER_CHANNEL, 0)
 
