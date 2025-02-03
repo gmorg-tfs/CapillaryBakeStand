@@ -11,8 +11,8 @@ class CapillaryBakeStandGui:
         self.root = root
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight() - 30
-        #self.test_stand_controller = CapillaryBakeStandController()
-        self.test_stand_controller = CapillaryBakeStandControllerSimulator()
+        self.test_stand_controller = CapillaryBakeStandController()
+        #self.test_stand_controller = CapillaryBakeStandControllerSimulator()
 
         self.state = tk.StringVar()
         self.state_label = tk.Label(root, textvariable=self.state)
@@ -266,9 +266,11 @@ class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
 
 import u3
 from LabJackPython import TCVoltsToTemp, LJ_ttK, eDAC, eAIN
-import signal
+import win32api
 class CapillaryBakeStandController:
     def __init__(self):
+        super().__init__()
+        self.novion = NovionRGA()
         self.device = u3.U3()
         self.THERMOCOUPLE_VOLTAGE_GAIN = 51
         self.THERMOCOUPLE_VOLTAGE_OFFSET = 1.254 #volts
@@ -278,11 +280,9 @@ class CapillaryBakeStandController:
         self.COOLER_CHANNEL = 1
         self.HEATER_VOLTAGE = 5 #volts
         self.COOLER_VOLTAGE = 5 #volts
-        self.novion = NovionRGA()
 
-        signal.signal(signal.SIGINT, self.EmergencyStop)
-        signal.signal(signal.SIGTERM, self.EmergencyStop)
-
+        win32api.SetConsoleCtrlHandler(self.EmergencyStop, True)
+    
     def EmergencyStop(self, signum, frame):
         self.SetVoltageOnDac(self.HEATER_CHANNEL, 0)
         self.SetVoltageOnDac(self.COOLER_CHANNEL, self.COOLER_VOLTAGE)
