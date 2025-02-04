@@ -11,37 +11,45 @@ class CapillaryBakeStandGui:
         self.root = root
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight() - 30
-        self.test_stand_controller = CapillaryBakeStandController()
-        #self.test_stand_controller = CapillaryBakeStandControllerSimulator()
+        #self.test_stand_controller = CapillaryBakeStandController()
+        self.test_stand_controller = CapillaryBakeStandControllerSimulator()
 
         self.state = tk.StringVar()
         self.state_label = tk.Label(root, textvariable=self.state)
-        self.state_label.grid(row=0, column=0, padx=2, pady=1)
 
         self.time = tk.StringVar()
         self.time.set(f"Time Left In State: ∞")
         self.time_label = tk.Label(root, textvariable=self.time)
-        self.time_label.grid(row=0, column=1, padx=2, pady=1)
 
         self.cycles = tk.StringVar()
         self.cycles.set(f"Cycles Completed: {self.test_stand_controller.cycle_count}")
         self.cycles_label = tk.Label(root, textvariable=self.cycles)
-        self.cycles_label.grid(row=0, column=2, padx=2, pady=1)
 
         self.start_stop_button_text = tk.StringVar()
         self.start_stop_button_text.set("Start")
         self.start_stop_button = tk.Button(root, textvariable=self.start_stop_button_text, command=self.StartStop)
-        self.start_stop_button.grid(row=0, column=3, padx=2, pady=1)
+
+        self.manual_override_value = tk.BooleanVar()
+        self.manual_override_value.set(False)
+        self.manual_override_checkbox = tk.Checkbutton(root, command=self.toggle_manual_mode ,text="Manual Override", variable=tk.IntVar())
+
+
+        self.manual_fan_button_text = tk.StringVar()
+        self.manual_fan_button_text.set("Fan On")
+        self.manual_fan_control_button = tk.Button(root, textvariable=self.manual_fan_button_text, command=self.manual_fan_control)
+
+        self.manual_heater_button_text = tk.StringVar()
+        self.manual_heater_button_text.set("Heater On")
+        self.manual_heater_control_button = tk.Button(root, textvariable=self.manual_heater_button_text, command=self.manual_heater_control)
+
 
         self.temperature_readback = tk.StringVar()
         self.temperature_readback.set(f"Temperature: n/a")
         self.temperature_readback_label = tk.Label(root, textvariable=self.temperature_readback)
-        self.temperature_readback_label.grid(row=1, column=1, padx=2)
 
         self.pressure_readback = tk.StringVar()
         self.pressure_readback.set(f"Pressure: n/a")
         self.pressure_readback_label = tk.Label(root, textvariable=self.pressure_readback)
-        self.pressure_readback_label.grid(row=1, column=2, padx=2)
 
         self.UPDATE_PERIOD = 250 #ms  how often to update gui. control loop is run once per update and will log data at controller specified logging frequency
 
@@ -57,11 +65,42 @@ class CapillaryBakeStandGui:
         self.canvas = FigureCanvasTkAgg(fig, master=root)
         self.canvas.draw()
 
-        self.canvas.get_tk_widget().grid(row=2, column=0, padx=2, pady=2, columnspan=5)
+        self.canvas.get_tk_widget().grid(row=3, column=0, padx=2, pady=2, columnspan=5)
 
         root.protocol('WM_DELETE_WINDOW', self.exit)
 
+        self.temperature_readback_label.grid(row=0, column=0)
+        self.pressure_readback_label.grid(row=0, column=1)
+        self.time_label.grid(row=0, column=2, padx=2, pady=1)
+        self.state_label.grid(row=0, column=3, padx=2, pady=1)
+        self.cycles_label.grid(row=0, column=4, padx=2, pady=1)
+
+        self.start_stop_button.grid(row=1, column=0, padx=2, pady=1)
+        self.manual_override_checkbox.grid(row=1, column=1, padx=2, pady=1)
+        self.manual_heater_control_button.grid(row=1, column=2, padx=2, pady=1)
+        self.manual_fan_control_button.grid(row=1, column=3, padx=2, pady=1)
         self.update()
+
+    def manual_fan_control(self):
+        if self.test_stand_controller.manual_override:
+            if self.test_stand_controller.cooler_on:
+                self.test_stand_controller.TurnFanOff()
+            else:
+                self.test_stand_controller.TurnFanOn()
+
+    def manual_heater_control(self):
+        if self.test_stand_controller.manual_override:
+            if self.test_stand_controller.heater_on:
+                self.test_stand_controller.TurnHeaterOff()
+            else:
+                self.test_stand_controller.TurnHeaterOn()
+    
+    def toggle_manual_mode(self):
+        if self.test_stand_controller.manual_override:
+            self.test_stand_controller.manual_override = False
+        else:
+            self.time.set(f"Time Left In State: ∞")
+            self.test_stand_controller.manual_override = True
 
     def exit(self):
         self.test_stand_controller.Stop()
@@ -76,33 +115,37 @@ class CapillaryBakeStandGui:
             self.start_stop_button_text.set("Stop")
 
     def current_state_as_string(self):
-        if self.test_stand_controller.current_state == self.test_stand_controller.states["heating"]:
-            return "Heating"
-        elif self.test_stand_controller.current_state == self.test_stand_controller.states["cooling"]:
-            return "Cooling"
+        if not self.test_stand_controller.manual_override:
+            if self.test_stand_controller.current_state == self.test_stand_controller.states["heating"]:
+                return "Heating"
+            elif self.test_stand_controller.current_state == self.test_stand_controller.states["cooling"]:
+                return "Cooling"
+            else:
+                return "Idle"
         else:
-            return "Idle"
+            return "Manual Override"
        
     def update(self):
         self.test_stand_controller.ControlLoop()
         self.cycles.set(f"Cycles Completed: {self.test_stand_controller.cycle_count}/{self.test_stand_controller.number_of_cycles_to_run}")
         self.state.set(f"State: {self.current_state_as_string()}")
+        self.manual_heater_button_text.set(f"Heater On: {self.test_stand_controller.heater_on}")
+        self.manual_fan_button_text.set(f"Cooler On: {self.test_stand_controller.cooler_on}")
 
         if len(self.test_stand_controller.temperature_data) > 0:
             self.temperature_readback.set(f"Temperature: {self.test_stand_controller.temperature_data[-1]:.2f}")
             self.pressure_readback.set(f"Pressure: {self.test_stand_controller.pressure_data[-1]:.2e}")
-
-        if self.test_stand_controller.current_state == self.test_stand_controller.states["heating"]:
-
-            total_remaining_time_s = self.test_stand_controller.HEATING_TIME - (time.time() - self.test_stand_controller.start_time)
-            minutes = total_remaining_time_s // 60
-            seconds = total_remaining_time_s % 60
-            self.time.set(f"Time Left In State: {int(minutes)}:{int(seconds)}")
-        elif self.test_stand_controller.current_state == self.test_stand_controller.states["cooling"]:
-            total_remaining_time_s = self.test_stand_controller.COOLING_TIME - (time.time() - self.test_stand_controller.start_time)
-            minutes = total_remaining_time_s // 60
-            seconds = total_remaining_time_s % 60
-            self.time.set(f"Time Left In State: {int(minutes)}:{int(seconds)}")
+        if not self.test_stand_controller.manual_override:
+            if self.test_stand_controller.current_state == self.test_stand_controller.states["heating"]:
+                total_remaining_time_s = self.test_stand_controller.HEATING_TIME - (time.time() - self.test_stand_controller.start_time)
+                minutes = total_remaining_time_s // 60
+                seconds = total_remaining_time_s % 60
+                self.time.set(f"Time Left In State: {int(minutes)}:{int(seconds)}")
+            elif self.test_stand_controller.current_state == self.test_stand_controller.states["cooling"]:
+                total_remaining_time_s = self.test_stand_controller.COOLING_TIME - (time.time() - self.test_stand_controller.start_time)
+                minutes = total_remaining_time_s // 60
+                seconds = total_remaining_time_s % 60
+                self.time.set(f"Time Left In State: {int(minutes)}:{int(seconds)}")
         else:
             self.time.set(f"Time Left In State: ∞")
 
@@ -127,6 +170,9 @@ class CapillaryBakeStandControllerBase:
         self.start_time = 0
         self.states = {"heating": 1, "cooling": 2}
         self.current_state = 0
+        self.manual_override = False
+        self.heater_on = False
+        self.cooler_on = False
         #process times
         self.HEATING_TIME = 20 *60 #seconds
         self.COOLING_TIME = 40 *60 #seconds
@@ -150,13 +196,18 @@ class CapillaryBakeStandControllerBase:
         self.rga_thread = threading.Thread(target=self.rga_scan)
 
     def Stop(self):
-        if self.cycle_count < self.number_of_cycles_to_run:
-            self.current_state = self.states["cooling"]
-            self.cycle_count = self.number_of_cycles_to_run #will cool for cooling time and then stop
+        if not self.manual_override:
+            if self.cycle_count < self.number_of_cycles_to_run:
+                self.current_state = self.states["cooling"]
+                self.cycle_count = self.number_of_cycles_to_run #will cool for cooling time and then stop
+            else:
+                self.running = False
+                self.current_state = 0
+                self.TurnOffHeaterAndCooler()
         else:
             self.running = False
             self.current_state = 0
-            self.TurnOffHeaterAndCooler()
+            self.TurnOffHeaterAndCooler
 
     def Start(self):
         self.cycle_count = 0
@@ -170,21 +221,26 @@ class CapillaryBakeStandControllerBase:
     def StartHeating(self):
         self.current_state = self.states["heating"]
         self.start_time = time.time()
+        self.TurnFanOff()
+        self.TurnHeaterOn()
 
     def StartCooling(self):
         self.current_state = self.states["cooling"]
         self.start_time = time.time()
-    
+        self.TurnHeaterOff()
+        self.TurnFanOn()
+
     def ControlLoop(self):
         try:
-            if self.current_state == self.states["heating"] and time.time() - self.start_time >= self.HEATING_TIME:
-                self.StartCooling()
-            elif self.current_state == self.states["cooling"] and time.time() - self.start_time >= self.COOLING_TIME:
-                self.cycle_count += 1
-                if self.cycle_count < self.number_of_cycles_to_run:
-                    self.StartHeating()
-                else:
-                    self.Stop()
+            if not self.manual_override:
+                if self.current_state == self.states["heating"] and time.time() - self.start_time >= self.HEATING_TIME:
+                    self.StartCooling()
+                elif self.current_state == self.states["cooling"] and time.time() - self.start_time >= self.COOLING_TIME:
+                    self.cycle_count += 1
+                    if self.cycle_count < self.number_of_cycles_to_run:
+                        self.StartHeating()
+                    else:
+                        self.Stop()
                     
             self.LogData()
         except Exception as e:
@@ -231,36 +287,63 @@ class CapillaryBakeStandControllerBase:
     
     def TurnOffHeaterAndCooler(self):
         Exception("Not Implemented")
-        
+    
+    def TurnFanOn(self):
+        self.cooler_on = True
+    def TurnFanOff(self):
+        self.cooler_on = False
+    def TurnHeaterOn(self):
+        self.heater_on = True
+    def TurnHeaterOff(self):
+        self.heater_on = False
 
 class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
     def __init__(self):
         super().__init__()
-        self.HEATING_TIME = 60 #seconds
-        self.COOLING_TIME = 80 #seconds
+        self.HEATING_TIME = 20 * 60 #seconds
+        self.COOLING_TIME = 40 * 60 #seconds
 
     def MeasureTemperature(self):
         if len(self.temperature_data) == 0:
             return 1.26, 25
         delta = random.random()
-        if self.current_state == self.states["heating"]:
-            return 1.26, self.temperature_data[-1] + delta
-        elif self.current_state == self.states["cooling"]:
-            return 1.26, self.temperature_data[-1] - delta
-        else:
-            return 1.26, self.temperature_data[-1]
+        
+        if not self.manual_override:
 
+            if self.current_state == self.states["heating"]:
+                return 1.26, self.temperature_data[-1] + delta
+            elif self.current_state == self.states["cooling"]:
+                return 1.26, self.temperature_data[-1] - delta
+            else:
+                return 1.26, self.temperature_data[-1]
+        else:
+    
+            if self.heater_on and not self.cooler_on:
+                return 1.26, self.temperature_data[-1] + delta
+            elif self.cooler_on and not self.heater_on:
+                return 1.26, self.temperature_data[-1] - delta
+            else:
+                return 1.26, self.temperature_data[-1]
+            
     def MeasurePressure(self):
         if len(self.pressure_data) == 0:
             return 1.26, 1e-6
         delta = random.random() * 1e-6 * 10
-        if self.current_state == self.states["heating"]:
-            return 1.26, self.pressure_data[-1] + delta
-        elif self.current_state == self.states["cooling"]:
-            return 1.26, self.pressure_data[-1] - delta
+        if not self.manual_override:
+            if self.current_state == self.states["heating"]:
+                return 1.26, self.pressure_data[-1] + delta
+            elif self.current_state == self.states["cooling"]:
+                return 1.26, self.pressure_data[-1] - delta
+            else:
+                return 1.26, self.pressure_data[-1]
         else:
-            return 1.26, self.pressure_data[-1]
-
+            if self.heater_on and not self.cooler_on:
+                return 1.26, self.pressure_data[-1] + delta
+            elif self.cooler_on and not self.heater_on:
+                return 1.26, self.pressure_data[-1] - delta
+            else:
+                return 1.26, self.pressure_data[-1]
+            
     def TurnOffHeaterAndCooler(self):
         pass
 
@@ -284,8 +367,8 @@ class CapillaryBakeStandController:
         win32api.SetConsoleCtrlHandler(self.EmergencyStop, True)
     
     def EmergencyStop(self, signum, frame):
-        self.SetVoltageOnDac(self.HEATER_CHANNEL, 0)
-        self.SetVoltageOnDac(self.COOLER_CHANNEL, self.COOLER_VOLTAGE)
+        self.TurnHeaterOff()
+        self.TurnFanOn()
 
     def MeasureTemperature(self):
         voltage_raw = eAIN(self.device.handle, self.THERMOCOUPLE_CHANNEL)
@@ -304,20 +387,25 @@ class CapillaryBakeStandController:
     def SetVoltageOnDac(self, channel, voltage):
         eDAC(self.device.handle, channel, voltage)
 
-    def StartHeating(self):
-        super().StartHeating()
-        self.SetVoltageOnDac(self.COOLER_CHANNEL, 0)
-        self.SetVoltageOnDac(self.HEATER_CHANNEL, self.HEATER_VOLTAGE)
-
-    def StartCooling(self):
-        super.StartCooling()
-        self.SetVoltageOnDac(self.HEATER_CHANNEL, 0)
+    def TurnFanOn(self):
+        super().TurnFanOn()
         self.SetVoltageOnDac(self.COOLER_CHANNEL, self.COOLER_VOLTAGE)
 
-    def TurnOffHeaterAndCooler(self):
-        self.SetVoltageOnDac(self.HEATER_CHANNEL, 0)
+    def TurnFanOff(self):
+        super.TurnFanOff()
         self.SetVoltageOnDac(self.COOLER_CHANNEL, 0)
 
+    def TurnHeaterOn(self):
+        super().TurnHeaterOn()
+        self.SetVoltageOnDac(self.HEATER_CHANNEL, self.HEATER_VOLTAGE)
+
+    def TurnHeaterOff(self):
+        super().TurnHeaterOff()
+        self.SetVoltageOnDac(self.HEATER_CHANNEL, 0)
+
+    def TurnOffHeaterAndCooler(self):
+        self.TurnHeaterOff()
+        self.TurnFanOff()
 
 
 if __name__ == "__main__":
