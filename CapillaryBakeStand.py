@@ -13,8 +13,8 @@ class CapillaryBakeStandGui:
         self.root.title("Capillary Bake Stand")
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight() - 30
-        #self.test_stand_controller = CapillaryBakeStandController()
-        self.test_stand_controller = CapillaryBakeStandControllerSimulator()
+        self.test_stand_controller = CapillaryBakeStandController()
+        #self.test_stand_controller = CapillaryBakeStandControllerSimulator()
 
         self.state = tk.StringVar()
         self.state_label = tk.Label(root, textvariable=self.state)
