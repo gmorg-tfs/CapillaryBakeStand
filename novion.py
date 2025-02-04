@@ -119,7 +119,7 @@ class NovionRGA(NovionBase):
         frame = self.build_frame(command, subcommand, payload)
         self.serial_port.write(frame)
         while self.serial_port.in_waiting != 24:
-            pass
+            time.sleep(0.01)
         response = self.serial_port.read(24)
         if not response:
             print("No response received")

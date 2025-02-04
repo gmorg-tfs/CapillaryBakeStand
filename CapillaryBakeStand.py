@@ -8,7 +8,9 @@ from novion import *
 
 class CapillaryBakeStandGui:
     def __init__(self, root):
+        
         self.root = root
+        self.root.title("Capillary Bake Stand")
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight() - 30
         #self.test_stand_controller = CapillaryBakeStandController()
@@ -166,7 +168,7 @@ class CapillaryBakeStandControllerBase:
         #state
         self.running = False
         self.cycle_count = 0
-        self.number_of_cycles_to_run = 10
+        self.number_of_cycles_to_run = 100
         self.start_time = 0
         self.states = {"heating": 1, "cooling": 2}
         self.current_state = 0
@@ -196,18 +198,9 @@ class CapillaryBakeStandControllerBase:
         self.rga_thread = threading.Thread(target=self.rga_scan)
 
     def Stop(self):
-        if not self.manual_override:
-            if self.cycle_count < self.number_of_cycles_to_run:
-                self.current_state = self.states["cooling"]
-                self.cycle_count = self.number_of_cycles_to_run #will cool for cooling time and then stop
-            else:
-                self.running = False
-                self.current_state = 0
-                self.TurnOffHeaterAndCooler()
-        else:
-            self.running = False
-            self.current_state = 0
-            self.TurnOffHeaterAndCooler
+        self.running = False
+        self.current_state = 0
+        self.TurnOffHeaterAndCooler()
 
     def Start(self):
         self.cycle_count = 0
@@ -286,7 +279,8 @@ class CapillaryBakeStandControllerBase:
         Exception("Not Implemented")
     
     def TurnOffHeaterAndCooler(self):
-        Exception("Not Implemented")
+        self.TurnHeaterOff()
+        self.TurnFanOff()
     
     def TurnFanOn(self):
         self.cooler_on = True
@@ -300,52 +294,43 @@ class CapillaryBakeStandControllerBase:
 class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
     def __init__(self):
         super().__init__()
-        self.HEATING_TIME = 20 * 60 #seconds
-        self.COOLING_TIME = 40 * 60 #seconds
+        self.HEATING_TIME = 20  #seconds
+        self.COOLING_TIME = 40  #seconds
 
     def MeasureTemperature(self):
         if len(self.temperature_data) == 0:
             return 1.26, 25
         delta = random.random()
-        
-        if not self.manual_override:
 
-            if self.current_state == self.states["heating"]:
-                return 1.26, self.temperature_data[-1] + delta
-            elif self.current_state == self.states["cooling"]:
-                return 1.26, self.temperature_data[-1] - delta
-            else:
-                return 1.26, self.temperature_data[-1]
+        if self.heater_on and not self.cooler_on:
+            return 1.26, self.temperature_data[-1] + delta
+        elif self.cooler_on and not self.heater_on:
+            return 1.26, self.temperature_data[-1]  - delta
+        elif self.heater_on and self.cooler_on:
+            return 1.26, self.temperature_data[-1] + (delta / 2)
         else:
-    
-            if self.heater_on and not self.cooler_on:
-                return 1.26, self.temperature_data[-1] + delta
-            elif self.cooler_on and not self.heater_on:
-                return 1.26, self.temperature_data[-1] - delta
+            if self.temperature_data[-1] > 25:
+                return 1.26, self.temperature_data[-1] - (delta / 4)
             else:
                 return 1.26, self.temperature_data[-1]
-            
-    def MeasurePressure(self):
+                        
+    def MeasurePressure(self): 
         if len(self.pressure_data) == 0:
             return 1.26, 1e-6
         delta = random.random() * 1e-6 * 10
-        if not self.manual_override:
-            if self.current_state == self.states["heating"]:
-                return 1.26, self.pressure_data[-1] + delta
-            elif self.current_state == self.states["cooling"]:
-                return 1.26, self.pressure_data[-1] - delta
-            else:
-                return 1.26, self.pressure_data[-1]
+        if self.heater_on and not self.cooler_on:
+            return 1.26, self.pressure_data[-1] + delta
+        elif self.cooler_on and not self.heater_on:
+            return 1.26, self.pressure_data[-1]  - delta
+        elif self.heater_on and self.cooler_on:
+            return 1.26, self.pressure_data[-1] + (delta / 2)
         else:
-            if self.heater_on and not self.cooler_on:
-                return 1.26, self.pressure_data[-1] + delta
-            elif self.cooler_on and not self.heater_on:
-                return 1.26, self.pressure_data[-1] - delta
+            if self.pressure_data[-1] > 1e-6:
+                return 1.26, self.pressure_data[-1] - (delta / 4)
             else:
                 return 1.26, self.pressure_data[-1]
             
-    def TurnOffHeaterAndCooler(self):
-        pass
+
 
 import u3
 from LabJackPython import TCVoltsToTemp, LJ_ttK, eDAC, eAIN
@@ -402,10 +387,6 @@ class CapillaryBakeStandController:
     def TurnHeaterOff(self):
         super().TurnHeaterOff()
         self.SetVoltageOnDac(self.HEATER_CHANNEL, 0)
-
-    def TurnOffHeaterAndCooler(self):
-        self.TurnHeaterOff()
-        self.TurnFanOff()
 
 
 if __name__ == "__main__":
