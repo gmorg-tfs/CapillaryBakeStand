@@ -16,6 +16,8 @@ class CapillaryBakeStandGui:
         self.test_stand_controller = CapillaryBakeStandController()
         #self.test_stand_controller = CapillaryBakeStandControllerSimulator()
 
+        self.number_of_points_to_plot = 1000
+
         self.state = tk.StringVar()
         self.state_label = tk.Label(root, textvariable=self.state)
 
@@ -150,13 +152,28 @@ class CapillaryBakeStandGui:
                 self.time.set(f"Time Left In State: {int(minutes)}:{int(seconds)}")
         else:
             self.time.set(f"Time Left In State: ∞")
+        
+        if len(self.test_stand_controller.temperature_data) > self.number_of_points_to_plot:
+            index_spacing = len(self.test_stand_controller.temperature_data) // self.number_of_points_to_plot
+            idx = np.arange(0, len(self.test_stand_controller.temperature_data), index_spacing)
+            temperature_data_reduced = self.test_stand_controller.temperature_data[idx]
+            pressure_data_reduced = self.test_stand_controller.pressure_data[idx]
+            time_reduced = self.test_stand_controller.time[idx]
 
-        self.temperature_axis.cla()
-        self.pressure_axis.cla()
-        x_axis = [self.test_stand_controller.time[0], self.test_stand_controller.time[(len(self.test_stand_controller.time)-1)//2]  ,self.test_stand_controller.time[-1]]
-        self.temperature_axis.plot(self.test_stand_controller.time, self.test_stand_controller.temperature_data, color='red')
-        self.pressure_axis.semilogy(self.test_stand_controller.time, self.test_stand_controller.pressure_data)
-        self.pressure_axis.set_xticks(x_axis)
+            self.temperature_axis.cla()
+            self.pressure_axis.cla()
+            self.temperature_axis.plot(time_reduced, temperature_data_reduced, color='red')
+            self.pressure_axis.semilogy(time_reduced, pressure_data_reduced)
+            x_axis = [time_reduced[0], time_reduced[(len(time_reduced)-1)//2]  ,time_reduced[-1]]
+            self.pressure_axis.set_xticks(x_axis)
+        else:
+            self.temperature_axis.cla()
+            self.pressure_axis.cla()
+            self.temperature_axis.plot(self.test_stand_controller.time, self.test_stand_controller.temperature_data, color='red')
+            self.pressure_axis.semilogy(self.test_stand_controller.time, self.test_stand_controller.pressure_data)
+            x_axis = [self.test_stand_controller.time[0], self.test_stand_controller.time[(len(self.test_stand_controller.time)-1)//2]  ,self.test_stand_controller.time[-1]]
+            self.pressure_axis.set_xticks(x_axis)
+
         self.canvas.draw()
         self.canvas.flush_events()
 
@@ -179,9 +196,9 @@ class CapillaryBakeStandControllerBase:
         self.HEATING_TIME = 20 *60 #seconds
         self.COOLING_TIME = 40 *60 #seconds
         #data
-        self.temperature_data = []
-        self.pressure_data = []
-        self.time = []
+        self.temperature_data = np.array([])
+        self.pressure_data = np.array([])
+        self.time = np.array([])
         #logging
         self.logger = Logger(_base_path="C:\\Data\\toaster\\",
                              _file_name_base="toaster_data_",
@@ -241,7 +258,10 @@ class CapillaryBakeStandControllerBase:
             self.Stop()
 
     def rga_scan(self):
-        self.novion.scan(self.temperature_data)
+        try:
+            self.novion.scan(self.temperature_data)
+        except Exception as e:
+            print(e)
 
     def do_scan(self):
         self.rga_thread = threading.Thread(target=self.rga_scan)
@@ -252,22 +272,26 @@ class CapillaryBakeStandControllerBase:
         pressure_voltage_raw, pressure = self.MeasurePressure()
 
         if len(self.temperature_data) == 0:
-            self.temperature_data+=[temperature]
-            self.pressure_data+=[pressure]
+            self.temperature_data = np.append(self.temperature_data, temperature)
+            self.pressure_data = np.append(self.pressure_data, pressure)
             time_struct = time.localtime()
-            self.time += [f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}"]
+            self.time = np.append(self.time, [f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}"])
+        
 
         log_condition1 = time.time() - self.last_log >= self.LOGGING_PERIOD
         log_condition2 = self.temperature_data[-1] * self.relative_temperature_change_to_log < abs(temperature - self.temperature_data[-1])
         log_condition3 = self.pressure_data[-1] * self.relative_pressure_change_to_log < abs(pressure - self.pressure_data[-1])
+        #log_condition2 = False
+        #log_condition3 = False
         if  log_condition1 or log_condition2 or log_condition3:
-            self.temperature_data+=[temperature]
-            self.pressure_data+=[pressure]
+            self.temperature_data = np.append(self.temperature_data, temperature)
+            self.pressure_data = np.append(self.pressure_data, pressure)
+            time_struct = time.localtime()
+            self.time = np.append(self.time, [f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}"])
+
             self.logger.log(f"{time.time()}, {temperature_voltage_raw}, {temperature},  {pressure_voltage_raw}, {pressure}")
             self.last_log = time.time()
-            time_struct = time.localtime()
-            self.time += [f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}"]
-        
+                
         if time.time() - self.last_rga_scan >= self.RGA_SCAN_PERIOD:
             self.do_scan()
             self.last_rga_scan = time.time()
@@ -294,8 +318,8 @@ class CapillaryBakeStandControllerBase:
 class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
     def __init__(self):
         super().__init__()
-        self.HEATING_TIME = 20  #seconds
-        self.COOLING_TIME = 40  #seconds
+        self.HEATING_TIME = 20 *60 #seconds
+        self.COOLING_TIME = 40 *60 #seconds
 
     def MeasureTemperature(self):
         if len(self.temperature_data) == 0:
@@ -317,7 +341,7 @@ class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
     def MeasurePressure(self): 
         if len(self.pressure_data) == 0:
             return 1.26, 1e-6
-        delta = random.random() * 1e-6 * 10
+        delta = random.random() * 1e-7 * 10
         if self.heater_on and not self.cooler_on:
             return 1.26, self.pressure_data[-1] + delta
         elif self.cooler_on and not self.heater_on:
