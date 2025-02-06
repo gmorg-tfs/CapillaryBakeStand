@@ -2,24 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-file_path = "C:\\data\\toaster\\toaster_rga_data_51.csv"
+file_path = "C:\\data\\toaster\\toaster_rga_data_77.csv"
 
-temp = np.array([])
-pressure = np.array([])
-time = np.array([])
+data = np.genfromtxt(file_path, delimiter=',', skip_header=1, usecols=(0, 1, 2))
+time, temp, pressure = data.T
 
-with open(file_path, "r") as file:
-    for this_line in file.readlines():
-        try:
-            line = this_line.split(",")
-            time_column = 0
-            pressure_column = 1
-            temperature_column = 2
-            temp = np.append(temp, [float(line[temperature_column])])
-            time = np.append(time, [float(line[time_column])])
-            pressure = np.append(pressure, [float(line[pressure_column])])
-        except:
-            pass
 
 fig, ax1 = plt.subplots()
 ax2 = ax1.twinx()
