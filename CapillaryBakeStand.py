@@ -13,8 +13,8 @@ class CapillaryBakeStandGui:
         self.root.title("Capillary Bake Stand")
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight() - 30
-        self.test_stand_controller = CapillaryBakeStandController()
-        #self.test_stand_controller = CapillaryBakeStandControllerSimulator()
+        #self.test_stand_controller = CapillaryBakeStandController()
+        self.test_stand_controller = CapillaryBakeStandControllerSimulator()
 
         self.number_of_points_to_plot = 1000
 
@@ -28,6 +28,10 @@ class CapillaryBakeStandGui:
         self.cycles = tk.StringVar()
         self.cycles.set(f"Cycles Completed: {self.test_stand_controller.cycle_count}")
         self.cycles_label = tk.Label(root, textvariable=self.cycles)
+
+        self.water_percentage_text = tk.StringVar()
+        self.water_percentage_text.set(f"Water Percentage: {self.test_stand_controller.novion.water_percentage}")
+        self.water_percentage_label = tk.Label(root, textvariable=self.water_percentage_text)
 
         self.start_stop_button_text = tk.StringVar()
         self.start_stop_button_text.set("Start")
@@ -83,6 +87,8 @@ class CapillaryBakeStandGui:
         self.manual_override_checkbox.grid(row=1, column=1, padx=2, pady=1)
         self.manual_heater_control_button.grid(row=1, column=2, padx=2, pady=1)
         self.manual_fan_control_button.grid(row=1, column=3, padx=2, pady=1)
+        self.water_percentage_label.grid(row=1, column=4, padx=2, pady=1)
+
         self.update()
 
     def manual_fan_control(self):
@@ -135,6 +141,7 @@ class CapillaryBakeStandGui:
         self.state.set(f"State: {self.current_state_as_string()}")
         self.manual_heater_button_text.set(f"Heater On: {self.test_stand_controller.heater_on}")
         self.manual_fan_button_text.set(f"Cooler On: {self.test_stand_controller.cooler_on}")
+        self.water_percentage_text.set(f"Water Percentage: {self.test_stand_controller.novion.water_percentage:.2f}")
 
         if len(self.test_stand_controller.temperature_data) > 0:
             self.temperature_readback.set(f"Temperature: {self.test_stand_controller.temperature_data[-1]:.2f}")
@@ -173,6 +180,8 @@ class CapillaryBakeStandGui:
             self.pressure_axis.semilogy(self.test_stand_controller.time, self.test_stand_controller.pressure_data)
             x_axis = [self.test_stand_controller.time[0], self.test_stand_controller.time[(len(self.test_stand_controller.time)-1)//2]  ,self.test_stand_controller.time[-1]]
             self.pressure_axis.set_xticks(x_axis)
+        
+        #plt.title(f"{self.test_stand_controller.novion.water_percentage}")
 
         self.canvas.draw()
         self.canvas.flush_events()

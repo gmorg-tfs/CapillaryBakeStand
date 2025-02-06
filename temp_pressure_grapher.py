@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-#file_path = "C:\\data\\toaster\\toaster_data_51.csv"
-file_path = "C:\\Users\\robertjaspe.spafford\\Downloads\\toaster_data_24(toaster_data_24).csv"
+file_path = "C:\\data\\toaster\\toaster_data_9.csv"
+#file_path = "C:\\Users\\robertjaspe.spafford\\Downloads\\toaster_data_24(toaster_data_24).csv"
 
 temp = np.array([])
 pressure = np.array([])

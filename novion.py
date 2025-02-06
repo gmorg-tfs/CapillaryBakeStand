@@ -22,13 +22,14 @@ class NovionBase:
                              _file_name_base="toaster_rga_data_",
                              _file_extension=".csv",
                              _header= self.header)
+        self.water_percentage = 0
     def request_pressure(self):
         Exception("Not Implemented")
     def request_number_of_points_available(self):
         Exception("Not Implemented")
     def request_next_point(self):
         Exception("Not Implemented")
-
+        
     def scan(self, temperature_data):
         pressure = self.request_pressure()
         temperature = temperature_data[-1]
@@ -37,6 +38,8 @@ class NovionBase:
             ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = self.request_next_point()
             self.intensitys[tuple_number] = intensity
             self.mass_numbers[tuple_number] = mass_number
+            if int(mass_number) == 18:
+                self.water_percentage = intensity
         data_str = f"{time.time()},{pressure},{temperature},"
         for i in self.intensitys:
             data_str += f"{i},"
