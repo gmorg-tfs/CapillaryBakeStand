@@ -7,6 +7,8 @@ class Logger:
         self.file_name_number = 0
         self.file_extension = _file_extension
         self.header = _header
+        self.buffer = []
+        self.max_buffer_size = 10
         self.create_new_file()
     
     def increment_file_number(self):
@@ -23,7 +25,14 @@ class Logger:
     def log(self, data):
         try:
             with open(self.get_file_name(), "a") as f:
+                if len(self.buffer) > 0:
+                    for d in self.buffer:
+                        f.write(f"{d}\n")
+                    self.buffer = []
                 f.write(f"{data}\n")
         except:
-            self.create_new_file()
-            self.log(data)
+            if len(self.buffer) > self.max_buffer_size:
+                self.create_new_file()
+                self.log(data)
+            else:
+                self.buffer += [data]

@@ -13,7 +13,7 @@ class NovionBase:
         self.intensitys = np.zeros(self.mass_end-self.mass_start+1)
         self.mass_numbers = np.zeros(self.mass_end-self.mass_start+1)
 
-        self.header = "Time (s),pressure (mbar),Temperature (C),"
+        self.header = "Time (s),pressure (torr),Temperature (C),"
         for i in range(self.mass_start, self.mass_end+1):
             self.header += f"{i},"
         self.header = self.header[:-1]

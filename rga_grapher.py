@@ -10,9 +10,13 @@ time, temp, pressure = data.T
 
 fig, ax1 = plt.subplots()
 ax2 = ax1.twinx()
+import time as t
+start = t.time()
 ax1.plot(time, temp, c='r')
 ax2.semilogy(time, pressure)
 plt.xticks([time[0], time[-1]])
+end = t.time()
+print("Time to plot: ", end - start)
 plt.figure()
 a= np.array([])
 for i in range(1, len(time)):

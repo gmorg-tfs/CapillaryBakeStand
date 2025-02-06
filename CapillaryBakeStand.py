@@ -1,5 +1,6 @@
 import time
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 from Logger import *
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -13,67 +14,68 @@ class CapillaryBakeStandGui:
         self.root.title("Capillary Bake Stand")
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight() - 30
-        #self.test_stand_controller = CapillaryBakeStandController()
-        self.test_stand_controller = CapillaryBakeStandControllerSimulator()
+        self.test_stand_controller = CapillaryBakeStandController()
+        #self.test_stand_controller = CapillaryBakeStandControllerSimulator()
 
-        self.number_of_points_to_plot = 1000
+        self.number_of_points_to_plot = 10000
 
+        text_font = ("Helvetica", 14)
         self.state = tk.StringVar()
-        self.state_label = tk.Label(root, textvariable=self.state)
+        self.state_label = tk.Label(root, textvariable=self.state, font=text_font)
 
         self.time = tk.StringVar()
         self.time.set(f"Time Left In State: ∞")
-        self.time_label = tk.Label(root, textvariable=self.time)
+        self.time_label = tk.Label(root, textvariable=self.time, font=text_font)
 
         self.cycles = tk.StringVar()
         self.cycles.set(f"Cycles Completed: {self.test_stand_controller.cycle_count}")
-        self.cycles_label = tk.Label(root, textvariable=self.cycles)
+        self.cycles_label = tk.Label(root, textvariable=self.cycles, font=text_font)
 
         self.water_percentage_text = tk.StringVar()
         self.water_percentage_text.set(f"Water Percentage: {self.test_stand_controller.novion.water_percentage}")
-        self.water_percentage_label = tk.Label(root, textvariable=self.water_percentage_text)
+        self.water_percentage_label = tk.Label(root, textvariable=self.water_percentage_text, font=text_font)
 
         self.start_stop_button_text = tk.StringVar()
         self.start_stop_button_text.set("Start")
-        self.start_stop_button = tk.Button(root, textvariable=self.start_stop_button_text, command=self.StartStop)
+        self.start_stop_button = tk.Button(root, textvariable=self.start_stop_button_text, command=self.StartStop, font=text_font)
 
         self.manual_override_value = tk.BooleanVar()
         self.manual_override_value.set(False)
-        self.manual_override_checkbox = tk.Checkbutton(root, command=self.toggle_manual_mode ,text="Manual Override", variable=tk.IntVar())
+        self.manual_override_checkbox = tk.Checkbutton(root, command=self.toggle_manual_mode ,text="Manual Override", variable=tk.IntVar(), font=text_font)
 
 
         self.manual_fan_button_text = tk.StringVar()
         self.manual_fan_button_text.set("Fan On")
-        self.manual_fan_control_button = tk.Button(root, textvariable=self.manual_fan_button_text, command=self.manual_fan_control)
+        self.manual_fan_control_button = tk.Button(root, textvariable=self.manual_fan_button_text, command=self.manual_fan_control, font=text_font)
 
         self.manual_heater_button_text = tk.StringVar()
         self.manual_heater_button_text.set("Heater On")
-        self.manual_heater_control_button = tk.Button(root, textvariable=self.manual_heater_button_text, command=self.manual_heater_control)
+        self.manual_heater_control_button = tk.Button(root, textvariable=self.manual_heater_button_text, command=self.manual_heater_control, font=text_font)
 
 
         self.temperature_readback = tk.StringVar()
         self.temperature_readback.set(f"Temperature: n/a")
-        self.temperature_readback_label = tk.Label(root, textvariable=self.temperature_readback)
+        self.temperature_readback_label = tk.Label(root, textvariable=self.temperature_readback, font=text_font)
 
         self.pressure_readback = tk.StringVar()
         self.pressure_readback.set(f"Pressure: n/a")
-        self.pressure_readback_label = tk.Label(root, textvariable=self.pressure_readback)
+        self.pressure_readback_label = tk.Label(root, textvariable=self.pressure_readback, font=text_font)
 
         self.UPDATE_PERIOD = 250 #ms  how often to update gui. control loop is run once per update and will log data at controller specified logging frequency
+        self.PLOT_UPDATE_PERIOD = 5 #seconds 
+        self.time_since_last_plot = 0
 
-        fig, ax1 = plt.subplots(figsize=(screen_width/100, screen_height/100), dpi=100)
+        self.fig,  self.temperature_axis = plt.subplots(figsize=(screen_width/100, screen_height/100), dpi=100)
+        self.pressure_axis = self.temperature_axis.twinx()
         plt.subplots_adjust(top=1, bottom=0.15, left=0.1, right=0.9)
-        self.temperature_axis = ax1
-        self.pressure_axis = ax1.twinx()
 
-        self.fig = fig
-        self.temperature_axis.plot(self.test_stand_controller.temperature_data, color='red')
-        self.pressure_axis.semilogy(self.test_stand_controller.pressure_data)
+        self.temperature_axis.plot(np.array(self.test_stand_controller.time),np.array(self.test_stand_controller.temperature_data), color='red')
+        self.pressure_axis.semilogy(np.array(self.test_stand_controller.time), np.array(self.test_stand_controller.pressure_data))
 
-        self.canvas = FigureCanvasTkAgg(fig, master=root)
-        self.canvas.draw()
+        self.canvas = FigureCanvasTkAgg(self.fig, master=root)
 
         self.canvas.get_tk_widget().grid(row=3, column=0, padx=2, pady=2, columnspan=5)
+
 
         root.protocol('WM_DELETE_WINDOW', self.exit)
 
@@ -90,6 +92,32 @@ class CapillaryBakeStandGui:
         self.water_percentage_label.grid(row=1, column=4, padx=2, pady=1)
 
         self.update()
+
+    def update_plot(self):
+        threading.Thread(target=self._update_plot).start()
+
+    def _update_plot(self):
+        timestamps =  np.array(self.test_stand_controller.time, dtype=str)
+        if len(timestamps) == 0:
+            return
+        temperatures = np.array(self.test_stand_controller.temperature_data)
+        pressures = np.array(self.test_stand_controller.pressure_data)
+        self.temperature_axis.cla()
+        self.pressure_axis.cla()
+        
+        if len(timestamps) > self.number_of_points_to_plot:
+            last_index = len(timestamps) - 1
+            starting_index = last_index - self.number_of_points_to_plot
+            timestamps = timestamps[starting_index:]
+            temperatures = temperatures[starting_index:]
+            pressures = pressures[starting_index:]
+
+        self.temperature_axis.plot(timestamps, temperatures, color='red')
+        self.pressure_axis.semilogy(timestamps, pressures)
+        x_axis = [timestamps[0], timestamps[(len(timestamps)-1)//2], timestamps[-1]]
+        self.pressure_axis.set_xticks(x_axis)
+        self.canvas.draw()
+        self.canvas.flush_events()
 
     def manual_fan_control(self):
         if self.test_stand_controller.manual_override:
@@ -134,7 +162,7 @@ class CapillaryBakeStandGui:
                 return "Idle"
         else:
             return "Manual Override"
-       
+    
     def update(self):
         self.test_stand_controller.ControlLoop()
         self.cycles.set(f"Cycles Completed: {self.test_stand_controller.cycle_count}/{self.test_stand_controller.number_of_cycles_to_run}")
@@ -152,39 +180,19 @@ class CapillaryBakeStandGui:
                 minutes = total_remaining_time_s // 60
                 seconds = total_remaining_time_s % 60
                 self.time.set(f"Time Left In State: {int(minutes)}:{int(seconds)}")
+                self.state_label.config(foreground="red")
             elif self.test_stand_controller.current_state == self.test_stand_controller.states["cooling"]:
                 total_remaining_time_s = self.test_stand_controller.COOLING_TIME - (time.time() - self.test_stand_controller.start_time)
                 minutes = total_remaining_time_s // 60
                 seconds = total_remaining_time_s % 60
                 self.time.set(f"Time Left In State: {int(minutes)}:{int(seconds)}")
+                self.state_label.config(foreground="blue")
         else:
             self.time.set(f"Time Left In State: ∞")
         
-        if len(self.test_stand_controller.temperature_data) > self.number_of_points_to_plot:
-            index_spacing = len(self.test_stand_controller.temperature_data) // self.number_of_points_to_plot
-            idx = np.arange(0, len(self.test_stand_controller.temperature_data), index_spacing)
-            temperature_data_reduced = self.test_stand_controller.temperature_data[idx]
-            pressure_data_reduced = self.test_stand_controller.pressure_data[idx]
-            time_reduced = self.test_stand_controller.time[idx]
-
-            self.temperature_axis.cla()
-            self.pressure_axis.cla()
-            self.temperature_axis.plot(time_reduced, temperature_data_reduced, color='red')
-            self.pressure_axis.semilogy(time_reduced, pressure_data_reduced)
-            x_axis = [time_reduced[0], time_reduced[(len(time_reduced)-1)//2]  ,time_reduced[-1]]
-            self.pressure_axis.set_xticks(x_axis)
-        else:
-            self.temperature_axis.cla()
-            self.pressure_axis.cla()
-            self.temperature_axis.plot(self.test_stand_controller.time, self.test_stand_controller.temperature_data, color='red')
-            self.pressure_axis.semilogy(self.test_stand_controller.time, self.test_stand_controller.pressure_data)
-            x_axis = [self.test_stand_controller.time[0], self.test_stand_controller.time[(len(self.test_stand_controller.time)-1)//2]  ,self.test_stand_controller.time[-1]]
-            self.pressure_axis.set_xticks(x_axis)
-        
-        #plt.title(f"{self.test_stand_controller.novion.water_percentage}")
-
-        self.canvas.draw()
-        self.canvas.flush_events()
+        if time.time() - self.time_since_last_plot >= self.PLOT_UPDATE_PERIOD:
+            self.time_since_last_plot = time.time()
+            self.update_plot()
 
         self.root.after(self.UPDATE_PERIOD, self.update)
 
@@ -205,14 +213,14 @@ class CapillaryBakeStandControllerBase:
         self.HEATING_TIME = 20 *60 #seconds
         self.COOLING_TIME = 40 *60 #seconds
         #data
-        self.temperature_data = np.array([])
-        self.pressure_data = np.array([])
-        self.time = np.array([])
+        self.temperature_data = []
+        self.pressure_data = []
+        self.time = []
         #logging
         self.logger = Logger(_base_path="C:\\Data\\toaster\\",
                              _file_name_base="toaster_data_",
                              _file_extension=".csv",
-                             _header="Time, Temperature Voltage (V), Temperature (C), Pressure Voltage (V), Pressure (mbar)")
+                             _header="Time, Temperature Voltage (V), Temperature (C), Pressure Voltage (V), Pressure (torr)")
         self.LOGGING_PERIOD = 1 #seconds
         self.last_log = 0
         self.relative_temperature_change_to_log = 0.02
@@ -281,10 +289,10 @@ class CapillaryBakeStandControllerBase:
         pressure_voltage_raw, pressure = self.MeasurePressure()
 
         if len(self.temperature_data) == 0:
-            self.temperature_data = np.append(self.temperature_data, temperature)
-            self.pressure_data = np.append(self.pressure_data, pressure)
+            self.temperature_data.append(temperature)
+            self.pressure_data.append(pressure)
             time_struct = time.localtime()
-            self.time = np.append(self.time, [f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}"])
+            self.time.append(f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}")
         
 
         log_condition1 = time.time() - self.last_log >= self.LOGGING_PERIOD
@@ -293,10 +301,10 @@ class CapillaryBakeStandControllerBase:
         #log_condition2 = False
         #log_condition3 = False
         if  log_condition1 or log_condition2 or log_condition3:
-            self.temperature_data = np.append(self.temperature_data, temperature)
-            self.pressure_data = np.append(self.pressure_data, pressure)
+            self.temperature_data.append(temperature)
+            self.pressure_data.append(pressure)
             time_struct = time.localtime()
-            self.time = np.append(self.time, [f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}"])
+            self.time.append(f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}")
 
             self.logger.log(f"{time.time()}, {temperature_voltage_raw}, {temperature},  {pressure_voltage_raw}, {pressure}")
             self.last_log = time.time()
@@ -327,8 +335,8 @@ class CapillaryBakeStandControllerBase:
 class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
     def __init__(self):
         super().__init__()
-        self.HEATING_TIME = 20 *60 #seconds
-        self.COOLING_TIME = 40 *60 #seconds
+        self.HEATING_TIME = 20  #seconds
+        self.COOLING_TIME = 20  #seconds
 
     def MeasureTemperature(self):
         if len(self.temperature_data) == 0:
