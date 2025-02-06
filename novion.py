@@ -71,7 +71,7 @@ class NovionMock(NovionBase):
         return 0, 0, i, m, t
 
 class NovionRGA(NovionBase):
-    def __init__(self, com_port="COM5", baud_rate=115200):
+    def __init__(self, com_port="COM3", baud_rate=115200):
         super().__init__()
         self.serial_port = serial.Serial(com_port, baud_rate, timeout=1)
 

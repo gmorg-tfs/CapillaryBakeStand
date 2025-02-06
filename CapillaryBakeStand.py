@@ -376,7 +376,7 @@ class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
 import u3
 from LabJackPython import TCVoltsToTemp, LJ_ttK, eDAC, eAIN
 import win32api
-class CapillaryBakeStandController:
+class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
     def __init__(self):
         super().__init__()
         self.novion = NovionRGA()
@@ -389,6 +389,7 @@ class CapillaryBakeStandController:
         self.COOLER_CHANNEL = 1
         self.HEATER_VOLTAGE = 5 #volts
         self.COOLER_VOLTAGE = 5 #volts
+
 
         win32api.SetConsoleCtrlHandler(self.EmergencyStop, True)
     
@@ -414,19 +415,23 @@ class CapillaryBakeStandController:
         eDAC(self.device.handle, channel, voltage)
 
     def TurnFanOn(self):
-        super().TurnFanOn()
+        #super().TurnFanOn()
+        self.cooler_on = True
         self.SetVoltageOnDac(self.COOLER_CHANNEL, self.COOLER_VOLTAGE)
 
     def TurnFanOff(self):
-        super.TurnFanOff()
+        self.cooler_on = False
+        #super.TurnFanOff()
         self.SetVoltageOnDac(self.COOLER_CHANNEL, 0)
 
     def TurnHeaterOn(self):
-        super().TurnHeaterOn()
+        self.heater_on = True
+        #super().TurnHeaterOn()
         self.SetVoltageOnDac(self.HEATER_CHANNEL, self.HEATER_VOLTAGE)
 
     def TurnHeaterOff(self):
-        super().TurnHeaterOff()
+        self.heater_on = False
+        #super().TurnHeaterOff()
         self.SetVoltageOnDac(self.HEATER_CHANNEL, 0)
 
 
