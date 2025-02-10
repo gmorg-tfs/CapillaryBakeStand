@@ -125,8 +125,8 @@ class CapillaryBakeStandGui:
         self.temperature_axis.cla()
         self.pressure_axis.cla()
 
-        self.temperature_axis.plot(self.test_stand_controller.time, self.test_stand_controller.temperature, color='red')
-        self.pressure_axis.semilogy(self.test_stand_controller.time, self.test_stand_controller.pressure)
+        self.temperature_axis.plot(self.test_stand_controller.time, self.test_stand_controller.temperature_data, color='red')
+        self.pressure_axis.semilogy(self.test_stand_controller.time, self.test_stand_controller.pressure_data)
         x_axis = [self.test_stand_controller.time[0], self.test_stand_controller.time[(len(self.test_stand_controller.time)-1)//2], self.test_stand_controller.time[-1]]
         self.pressure_axis.set_xticks(x_axis)
         self.canvas.draw()
