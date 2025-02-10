@@ -6,6 +6,21 @@ import matplotlib.pyplot as plt
 from Logger import * 
 import random
 
+
+HELIUM_MODE = 3
+RGA_MODE = 2
+
+ION_GUAGE_ACTIVE = 1
+
+NAK_MASK = 0b00010000
+
+NAK_ERROR = 1
+INVALID_RESPONSE_LENGTH_ERROR = 2
+CRC_ERROR = 3
+NO_RESPONSE_ERROR = 4
+
+TIMEOUT_SECONDS = 0.5
+
 class NovionBase:
     def __init__(self):
         self.mass_start = 1
@@ -23,14 +38,36 @@ class NovionBase:
                              _file_extension=".csv",
                              _header= self.header)
         self.water_percentage = 0
+        self.helium_value = 0
+        self.mode = self.get_mode()
+
     def request_pressure(self):
         Exception("Not Implemented")
     def request_number_of_points_available(self):
         Exception("Not Implemented")
     def request_next_point(self):
         Exception("Not Implemented")
-        
+    
+    def change_to_he_leak_detector(self):
+        Exception("Not Implemented")
+    
+    def change_to_rga(self):
+        Exception("Not Implemented")
+    
+    def get_mode(self):
+        Exception("Not Implemented")
+
+    def get_he_value(self):
+        Exception("Not Implemented")
+    
+    def get_active_pressure_sensor(self):
+        Exception("Not Implemented")
+    
+    def can_scan(self):
+        return self.get_active_pressure_sensor() == ION_GUAGE_ACTIVE
+
     def scan(self, temperature_data):
+
         pressure = self.request_pressure()
         temperature = temperature_data[-1]
         n = self.request_number_of_points_available()
@@ -45,6 +82,14 @@ class NovionBase:
             data_str += f"{i},"
         data_str = data_str[:-1]
         self.logger.log(data_str)
+    
+    def scan_2(self):
+        data = np.zeros(self.mass_end-self.mass_start+1)
+        n = self.request_number_of_points_available()
+        for _ in range(n):
+            ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = self.request_next_point()
+            data[int(mass_number)] = intensity
+        return data    
 
 class NovionMock(NovionBase):
     def __init__(self):
@@ -54,21 +99,41 @@ class NovionMock(NovionBase):
         self.intensitys = np.array([float(i) for i in intensitys_str.split("\t")])
         self.current_index = 0
 
-    def request_pressure(self):
+    def random_intrument_response_time(self):
         time.sleep(random.random() % 0.1)
+
+    def request_pressure(self):
+        self.random_intrument_response_time()
         return 1e-6 * random.random() * 10
 
     def request_number_of_points_available(self):
-        time.sleep(random.random() % 0.1)
+        self.random_intrument_response_time()
         return 75
 
     def request_next_point(self):
+        self.random_intrument_response_time()
         i = self.intensitys[self.current_index]
         m = self.masses[self.current_index]
         t = self.current_index
         self.current_index += 1
         self.current_index %= 75
         return 0, 0, i, m, t
+    
+    def change_to_he_leak_detector(self):
+        self.random_intrument_response_time()
+        self.mode = HELIUM_MODE
+    
+    def change_to_rga(self):
+        self.random_intrument_response_time()
+        self.mode = RGA_MODE
+
+    def get_mode(self):
+        self.random_intrument_response_time()
+        return 0
+
+    def get_he_value(self):
+        self.random_intrument_response_time()
+        self.helium_value = random.random() * 10**-10
 
 class NovionRGA(NovionBase):
     def __init__(self, com_port="COM3", baud_rate=115200):
@@ -109,37 +174,66 @@ class NovionRGA(NovionBase):
     def parse_response(self, response):
         if len(response) != 24:
             print(f"Invalid response length: {len(response)}")
-            raise ValueError("Invalid response length")
+            return None, INVALID_RESPONSE_LENGTH_ERROR
+        header = response[1]
+        if header & NAK_MASK == 0:
+            return None, NAK_ERROR
         crc_received = response[22] | (response[23] << 8)
         crc_calculated = self.calc_crc(response[:22])
         if crc_received != crc_calculated:
-            raise ValueError("CRC mismatch")
+            return None, CRC_ERROR
         payload = response[6:22]
-        return payload
+        return payload, None
 
     def send_command(self, command, subcommand, payload=struct.pack('<B', 0x00)):
         #print(f"Command: {command}, Subcommand: {subcommand}, Payload: {payload.hex()}")
         frame = self.build_frame(command, subcommand, payload)
         self.serial_port.write(frame)
-        while self.serial_port.in_waiting != 24:
+        start = time.time()
+        while self.serial_port.in_waiting != 24 and time.time() - start < TIMEOUT_SECONDS:
             time.sleep(0.01)
+
         response = self.serial_port.read(24)
         if not response:
-            print("No response received")
-            return None
-        return self.parse_response(response)
+            #print("No response received")
+            return NO_RESPONSE_ERROR
+        
+        parsed, err = self.parse_response(response)
+        if err:
+            #print(f"Error: {err}")
+            return err
+        else:
+            return parsed
+
+
 
     def request_pressure(self):
         command = 0x20
         subcommand = 0x08
         data = self.send_command(command, subcommand)
+        if data == NAK_ERROR:
+            #NAK: no total pressre available
+            return None
         pressure, = struct.unpack('<f', data[:4])
         return pressure
+    
+    def get_active_pressure_sensor(self):
+        command = 0x83
+        subcommand = 0x02
+        data = self.send_command(command, subcommand)
+        sensor, = struct.unpack('<i', data[:4])
+        return sensor
+
+        
 
     def request_number_of_points_available(self):
         command = 0x81
         subcommand = 0x3f
         data = self.send_command(command, subcommand)
+        if data is None:
+            #NAK: no points available, mode is wrong or pressure is too high
+            #RGA & He is only usable in ionization mode
+            return None
         n, = struct.unpack('<i', data[:4])
         return n
 
@@ -147,6 +241,9 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x3A
         data = self.send_command(command, subcommand)
+        if data is None:
+            #NAK: no points available, mode is wrong or pressure is too high
+            return None
         ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = struct.unpack('<hhffI', data) #this is cool
         return ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number
 
@@ -189,54 +286,31 @@ class NovionRGA(NovionBase):
         #assert get_scan_start(serial_port) == start_mass_number
         #assert get_scan_end(serial_port) == end_mass_number
 
+    def change_to_he_leak_detector(self):
+        command = 0x81
+        subcommand = 0x39
+        payload = struct.pack('<B', 0x03)
+        self.send_command(command, subcommand, payload)
+        assert self.get_mode() == HELIUM_MODE
+        self.mode = HELIUM_MODE
 
+    def change_to_rga(self):
+        command = 0x81
+        subcommand = 0x39
+        payload = struct.pack('<B', 0x02)
+        self.send_command(command, subcommand, payload)
+        assert self.get_mode() == RGA_MODE
+        self.mode = RGA_MODE
 
-""" 
-start = time.time()
-n = request_number_of_points_available(serial_port)
-for _ in range(n):
-    request_next_point(serial_port)
-end = time.time()
-print(f"Time taken: {end - start}")
- """
-
-#set_scan_range(serial_port, 1, 75)
-""" 
-intensity_over_time = {}
-
-intensitys = np.zeros(mass_end-mass_start+1)
-mass_numbers = np.zeros(mass_end-mass_start+1)
-while True:
-    n = request_number_of_points_available(serial_port)
-    for i in range(n):
-        ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = request_next_point(serial_port)
-        intensitys[tuple_number] = intensity
-        mass_numbers[tuple_number] = mass_number
-    plt.cla()
-    plt.plot(mass_numbers, intensitys)
-    plt.xlabel("Mass (amu)")
-    plt.ylabel("Intensity")
-    plt.title(tuple_number)
-    plt.pause(1e-9)
-
-    data_str = ""
-    for i in intensitys:
-        data_str += f"{i},"
-    data_str = data_str[:-1]
-
-    logger.log(data_str)
- """"""     idx = np.argsort(intensitys)
-    most_intense = mass_numbers[idx[-5:]]
-    mass_with_most_intensity = mass_numbers[idx[-5:]]
-
-    for i, m in zip(most_intense, mass_with_most_intensity):
-        if int(m) in intensity_over_time:
-            intensity_over_time[int(m)] += [i]
-        else:
-            intensity_over_time[int(m)] = [i]
-
-    print(intensity_over_time[18]) """
-    #print(f"Top 5 peaks: {mass_numbers[idx[-5:]]}")
-    #print(f"Top 5 intensities: {intensitys[i]}")
-    #break
-#plt.show()
+    def get_mode(self):
+        command = 0x81
+        subcommand = 0x38
+        data = self.send_command(command, subcommand)
+        mode = struct.unpack('<i', data[:4])
+        return mode
+    
+    def get_he_value(self):
+        command = 0x81
+        subcommand = 0x31
+        data = self.send_command(command, subcommand)
+        self.helium_value = struct.unpack('<f', data[:4])

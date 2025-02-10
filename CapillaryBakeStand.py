@@ -6,6 +6,10 @@ import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import threading
 from novion import *
+from collections import deque
+
+
+MAX_DATA_POINTS = 10000
 
 class CapillaryBakeStandGui:
     def __init__(self, root):
@@ -14,10 +18,8 @@ class CapillaryBakeStandGui:
         self.root.title("Capillary Bake Stand")
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight() - 30
-        self.test_stand_controller = CapillaryBakeStandController()
-        #self.test_stand_controller = CapillaryBakeStandControllerSimulator()
-
-        self.number_of_points_to_plot = 10000
+        #self.test_stand_controller = CapillaryBakeStandController()
+        self.test_stand_controller = CapillaryBakeStandControllerSimulator()
 
         text_font = ("Helvetica", 14)
         self.state = tk.StringVar()
@@ -61,6 +63,14 @@ class CapillaryBakeStandGui:
         self.pressure_readback.set(f"Pressure: n/a")
         self.pressure_readback_label = tk.Label(root, textvariable=self.pressure_readback, font=text_font)
 
+        self.helium_readback = tk.StringVar()
+        self.helium_readback.set(f"Helium: n/a")
+        self.helium_readback_label = tk.Label(root, textvariable=self.helium_readback, font=text_font)
+
+        self.helium_mode_button_text = tk.StringVar()
+        self.helium_mode_button_text.set("Helium: False")
+        self.helium_mode_button = tk.Button(root, textvariable=self.helium_mode_button_text, command=self.handle_helium_mode_buton, font=text_font)
+
         self.UPDATE_PERIOD = 250 #ms  how often to update gui. control loop is run once per update and will log data at controller specified logging frequency
         self.PLOT_UPDATE_PERIOD = 5 #seconds 
         self.time_since_last_plot = 0
@@ -74,7 +84,7 @@ class CapillaryBakeStandGui:
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=root)
 
-        self.canvas.get_tk_widget().grid(row=3, column=0, padx=2, pady=2, columnspan=5)
+        self.canvas.get_tk_widget().grid(row=3, column=0, padx=2, pady=2, columnspan=6)
 
 
         root.protocol('WM_DELETE_WINDOW', self.exit)
@@ -84,37 +94,40 @@ class CapillaryBakeStandGui:
         self.time_label.grid(row=0, column=2, padx=2, pady=1)
         self.state_label.grid(row=0, column=3, padx=2, pady=1)
         self.cycles_label.grid(row=0, column=4, padx=2, pady=1)
+        self.helium_mode_button.grid(row=0, column=5, padx=2, pady=1)
 
         self.start_stop_button.grid(row=1, column=0, padx=2, pady=1)
         self.manual_override_checkbox.grid(row=1, column=1, padx=2, pady=1)
         self.manual_heater_control_button.grid(row=1, column=2, padx=2, pady=1)
         self.manual_fan_control_button.grid(row=1, column=3, padx=2, pady=1)
         self.water_percentage_label.grid(row=1, column=4, padx=2, pady=1)
+        self.helium_readback_label.grid(row=1, column=5, padx=2, pady=1)
 
         self.update()
+
+    def handle_helium_mode_buton(self):
+        if self.test_stand_controller.novion.mode == 2: #mode 2 is rga
+            self.test_stand_controller.novion.change_to_he_leak_detector()
+            self.helium_mode_button_text.set("Helium: True")
+        else:
+            self.test_stand_controller.novion.change_to_rga()
+            self.helium_mode_button_text.set("Helium: False")
 
     def update_plot(self):
         threading.Thread(target=self._update_plot).start()
 
     def _update_plot(self):
-        timestamps =  np.array(self.test_stand_controller.time, dtype=str)
-        if len(timestamps) == 0:
+        #timestamps =  np.array(self.test_stand_controller.time, dtype=str)
+        if len(self.test_stand_controller.time) == 0:
             return
-        temperatures = np.array(self.test_stand_controller.temperature_data)
-        pressures = np.array(self.test_stand_controller.pressure_data)
+        #temperatures = np.array(self.test_stand_controller.temperature_data)
+        #pressures = np.array(self.test_stand_controller.pressure_data)
         self.temperature_axis.cla()
         self.pressure_axis.cla()
-        
-        if len(timestamps) > self.number_of_points_to_plot:
-            last_index = len(timestamps) - 1
-            starting_index = last_index - self.number_of_points_to_plot
-            timestamps = timestamps[starting_index:]
-            temperatures = temperatures[starting_index:]
-            pressures = pressures[starting_index:]
 
-        self.temperature_axis.plot(timestamps, temperatures, color='red')
-        self.pressure_axis.semilogy(timestamps, pressures)
-        x_axis = [timestamps[0], timestamps[(len(timestamps)-1)//2], timestamps[-1]]
+        self.temperature_axis.plot(self.test_stand_controller.time, self.test_stand_controller.temperature, color='red')
+        self.pressure_axis.semilogy(self.test_stand_controller.time, self.test_stand_controller.pressure)
+        x_axis = [self.test_stand_controller.time[0], self.test_stand_controller.time[(len(self.test_stand_controller.time)-1)//2], self.test_stand_controller.time[-1]]
         self.pressure_axis.set_xticks(x_axis)
         self.canvas.draw()
         self.canvas.flush_events()
@@ -142,6 +155,7 @@ class CapillaryBakeStandGui:
 
     def exit(self):
         self.test_stand_controller.Stop()
+        self.root.destroy()
         quit()
 
     def StartStop(self):
@@ -165,11 +179,13 @@ class CapillaryBakeStandGui:
     
     def update(self):
         self.test_stand_controller.ControlLoop()
+
         self.cycles.set(f"Cycles Completed: {self.test_stand_controller.cycle_count}/{self.test_stand_controller.number_of_cycles_to_run}")
         self.state.set(f"State: {self.current_state_as_string()}")
         self.manual_heater_button_text.set(f"Heater On: {self.test_stand_controller.heater_on}")
         self.manual_fan_button_text.set(f"Cooler On: {self.test_stand_controller.cooler_on}")
         self.water_percentage_text.set(f"Water Percentage: {self.test_stand_controller.novion.water_percentage:.2f}")
+        self.helium_readback.set(f"Helium: {self.test_stand_controller.novion.helium_value:.2e}")
 
         if len(self.test_stand_controller.temperature_data) > 0:
             self.temperature_readback.set(f"Temperature: {self.test_stand_controller.temperature_data[-1]:.2f}")
@@ -213,9 +229,9 @@ class CapillaryBakeStandControllerBase:
         self.HEATING_TIME = 20 *60 #seconds
         self.COOLING_TIME = 40 *60 #seconds
         #data
-        self.temperature_data = []
-        self.pressure_data = []
-        self.time = []
+        self.temperature_data = deque(maxlen=MAX_DATA_POINTS)
+        self.pressure_data = deque(maxlen=MAX_DATA_POINTS)
+        self.time = deque(maxlen=MAX_DATA_POINTS)
         #logging
         self.logger = Logger(_base_path="C:\\Data\\toaster\\",
                              _file_name_base="toaster_data_",
@@ -230,6 +246,9 @@ class CapillaryBakeStandControllerBase:
         self.last_rga_scan = 0
         self.RGA_SCAN_PERIOD = 10 #seconds
         self.rga_thread = threading.Thread(target=self.rga_scan)
+
+        self.last_pressure = 0
+        self.last_temperature = 0
 
     def Stop(self):
         self.running = False
@@ -268,7 +287,6 @@ class CapillaryBakeStandControllerBase:
                         self.StartHeating()
                     else:
                         self.Stop()
-                    
             self.LogData()
         except Exception as e:
             print(e)
@@ -284,6 +302,40 @@ class CapillaryBakeStandControllerBase:
         self.rga_thread = threading.Thread(target=self.rga_scan)
         self.rga_thread.start()
 
+    def IsTimeToStartNextScan(self):
+        return time.time() - self.last_rga_scan >= self.RGA_SCAN_PERIOD
+    
+    def LogData_2(self):
+        temperature_voltage_raw, temperature = self.MeasureTemperature()
+        pressure_voltage_raw, pressure = self.MeasurePressure()
+        pressure_novion = self.novion.get_pressure()
+        helium = None
+        rga_scan = None
+        
+        if self.novion.can_scan():
+            if self.novion.mode == HELIUM_MODE:
+                helium = self.novion.get_he_value()
+            elif self.novion.mode == RGA_MODE and self.IsTimeToStartNextScan():
+                rga_scan = self.novion.scan_2()
+                self.last_rga_scan = time.time()
+        
+
+        TooLongSinceLastLog = time.time() - self.last_log >= self.LOGGING_PERIOD
+        LogWorthyPressureChange = self.last_pressure * self.relative_pressure_change_to_log < abs(pressure - self.last_pressure)
+        LogWorthyTemperatureChange = self.last_temperature * self.relative_temperature_change_to_log < abs(temperature - self.last_temperature)
+
+        if TooLongSinceLastLog or LogWorthyPressureChange or LogWorthyTemperatureChange:
+            self.logger.log(f"{time.time()}, {temperature_voltage_raw}, {temperature},  {pressure_voltage_raw}, {pressure}, {pressure_novion}, {helium}, {rga_scan}")
+            self.last_log = time.time()
+            self.last_pressure = pressure
+            self.last_temperature = temperature
+
+        self.temperature_data.append(temperature)
+        self.pressure_data.append(pressure)
+        time_struct = time.localtime()
+        self.time.append(f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}")
+
+
     def LogData(self):
         temperature_voltage_raw, temperature = self.MeasureTemperature()
         pressure_voltage_raw, pressure = self.MeasurePressure()
@@ -294,12 +346,10 @@ class CapillaryBakeStandControllerBase:
             time_struct = time.localtime()
             self.time.append(f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}")
         
-
         log_condition1 = time.time() - self.last_log >= self.LOGGING_PERIOD
         log_condition2 = self.temperature_data[-1] * self.relative_temperature_change_to_log < abs(temperature - self.temperature_data[-1])
         log_condition3 = self.pressure_data[-1] * self.relative_pressure_change_to_log < abs(pressure - self.pressure_data[-1])
-        #log_condition2 = False
-        #log_condition3 = False
+
         if  log_condition1 or log_condition2 or log_condition3:
             self.temperature_data.append(temperature)
             self.pressure_data.append(pressure)
@@ -308,8 +358,11 @@ class CapillaryBakeStandControllerBase:
 
             self.logger.log(f"{time.time()}, {temperature_voltage_raw}, {temperature},  {pressure_voltage_raw}, {pressure}")
             self.last_log = time.time()
-                
-        if time.time() - self.last_rga_scan >= self.RGA_SCAN_PERIOD:
+        
+        if self.novion.mode == HELIUM_MODE and self.novion.can_scan():
+            self.novion.get_he_value()
+        elif self.novion.mode == RGA_MODE and self.IsTimeToStartNextScan() and self.novion.can_scan():
+            self.novion.scan(self.temperature_data)
             self.do_scan()
             self.last_rga_scan = time.time()
 
@@ -415,23 +468,19 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
         eDAC(self.device.handle, channel, voltage)
 
     def TurnFanOn(self):
-        #super().TurnFanOn()
-        self.cooler_on = True
+        super().TurnFanOn(self)
         self.SetVoltageOnDac(self.COOLER_CHANNEL, self.COOLER_VOLTAGE)
 
     def TurnFanOff(self):
-        self.cooler_on = False
-        #super.TurnFanOff()
+        super().TurnFanOff(self)
         self.SetVoltageOnDac(self.COOLER_CHANNEL, 0)
 
     def TurnHeaterOn(self):
-        self.heater_on = True
-        #super().TurnHeaterOn()
+        super().TurnHeaterOn(self)
         self.SetVoltageOnDac(self.HEATER_CHANNEL, self.HEATER_VOLTAGE)
 
     def TurnHeaterOff(self):
-        self.heater_on = False
-        #super().TurnHeaterOff()
+        super().TurnHeaterOff(self)
         self.SetVoltageOnDac(self.HEATER_CHANNEL, 0)
 
 
