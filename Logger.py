@@ -20,7 +20,12 @@ class Logger:
     def create_new_file(self):
         while os.path.exists(self.get_file_name()):
             self.increment_file_number()
-        self.log(self.header)
+        with open(self.get_file_name(), "a") as f:
+            f.write(f"{self.header}\n")
+            if len(self.buffer) > 0:
+                for d in self.buffer:
+                    f.write(f"{d}\n")
+                self.buffer = []
 
     def log(self, data):
         try:
