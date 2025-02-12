@@ -22,7 +22,11 @@ class NovionBase:
                              _file_name_base="toaster_rga_data_",
                              _file_extension=".csv",
                              _header= self.header)
-        self.water_percentage = 0
+        self.water_17 = 0
+        self.water_18 = 0
+        self.water_19 = 0
+    def water_percentage(self):
+        return self.water_17 + self.water_18 + self.water_19
     def request_pressure(self):
         Exception("Not Implemented")
     def request_number_of_points_available(self):
@@ -39,7 +43,11 @@ class NovionBase:
             self.intensitys[tuple_number] = intensity
             self.mass_numbers[tuple_number] = mass_number
             if int(mass_number) == 18:
-                self.water_percentage = intensity
+                self.water_18 = intensity
+            if int(mass_number) == 17:
+                self.water_17 = intensity
+            if int(mass_number) == 19:
+                self.water_19 = intensity
         data_str = f"{time.time()},{pressure},{temperature},"
         for i in self.intensitys:
             data_str += f"{i},"

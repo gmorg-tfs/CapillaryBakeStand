@@ -32,7 +32,7 @@ class CapillaryBakeStandGui:
         self.cycles_label = tk.Label(root, textvariable=self.cycles, font=text_font)
 
         self.water_percentage_text = tk.StringVar()
-        self.water_percentage_text.set(f"Water Percentage: {self.test_stand_controller.novion.water_percentage}")
+        self.water_percentage_text.set(f"Water Percentage: {self.test_stand_controller.novion.water_percentage()}")
         self.water_percentage_label = tk.Label(root, textvariable=self.water_percentage_text, font=text_font)
 
         self.start_stop_button_text = tk.StringVar()
@@ -90,11 +90,10 @@ class CapillaryBakeStandGui:
         self.manual_heater_control_button.grid(row=1, column=2, padx=2, pady=1)
         self.manual_fan_control_button.grid(row=1, column=3, padx=2, pady=1)
         self.water_percentage_label.grid(row=1, column=4, padx=2, pady=1)
-
+        self.plot_thread = threading.Thread(target=self._update_plot)
+        self.plot_thread.start() 
         self.update()
 
-    def update_plot(self):
-        threading.Thread(target=self._update_plot).start()
 
     def _update_plot(self):
         timestamps =  np.array(self.test_stand_controller.time, dtype=str)
@@ -142,6 +141,7 @@ class CapillaryBakeStandGui:
 
     def exit(self):
         self.test_stand_controller.Stop()
+        self.plot_thread.join()
         quit()
 
     def StartStop(self):
@@ -169,7 +169,10 @@ class CapillaryBakeStandGui:
         self.state.set(f"State: {self.current_state_as_string()}")
         self.manual_heater_button_text.set(f"Heater On: {self.test_stand_controller.heater_on}")
         self.manual_fan_button_text.set(f"Cooler On: {self.test_stand_controller.cooler_on}")
-        self.water_percentage_text.set(f"Water Percentage: {self.test_stand_controller.novion.water_percentage:.2f}")
+
+        water_per_cent = self.test_stand_controller.novion.water_percentage() * 100
+
+        self.water_percentage_text.set(f"Water Percentage: {water_per_cent:.2f}%")
 
         if len(self.test_stand_controller.temperature_data) > 0:
             self.temperature_readback.set(f"Temperature: {self.test_stand_controller.temperature_data[-1]:.2f}")
@@ -192,7 +195,7 @@ class CapillaryBakeStandGui:
         
         if time.time() - self.time_since_last_plot >= self.PLOT_UPDATE_PERIOD:
             self.time_since_last_plot = time.time()
-            self.update_plot()
+            self._update_plot()
 
         self.root.after(self.UPDATE_PERIOD, self.update)
 
@@ -202,7 +205,7 @@ class CapillaryBakeStandControllerBase:
         #state
         self.running = False
         self.cycle_count = 0
-        self.number_of_cycles_to_run = 100
+        self.number_of_cycles_to_run = 7 * 24 #hrs
         self.start_time = 0
         self.states = {"heating": 1, "cooling": 2}
         self.current_state = 0
@@ -221,7 +224,7 @@ class CapillaryBakeStandControllerBase:
                              _file_name_base="toaster_data_",
                              _file_extension=".csv",
                              _header="Time, Temperature Voltage (V), Temperature (C), Pressure Voltage (V), Pressure (torr)")
-        self.LOGGING_PERIOD = 1 #seconds
+        self.LOGGING_PERIOD = 10 #seconds
         self.last_log = 0
         self.relative_temperature_change_to_log = 0.02
         self.relative_pressure_change_to_log = 0.02
@@ -391,12 +394,12 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
         self.COOLER_VOLTAGE = 5 #volts
 
 
-        win32api.SetConsoleCtrlHandler(self.EmergencyStop, True)
-    
-    def EmergencyStop(self, signum, frame):
+        #win32api.SetConsoleCtrlHandler(self.EmergencyStop, True)
+    """
+    def EmergencyStop(self, signum):
         self.TurnHeaterOff()
         self.TurnFanOn()
-
+"""
     def MeasureTemperature(self):
         voltage_raw = eAIN(self.device.handle, self.THERMOCOUPLE_CHANNEL)
         voltage = (voltage_raw - self.THERMOCOUPLE_VOLTAGE_OFFSET) / self.THERMOCOUPLE_VOLTAGE_GAIN
