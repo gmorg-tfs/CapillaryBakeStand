@@ -27,7 +27,6 @@ class NovionBase:
         self.intensitys = np.zeros(self.mass_end-self.mass_start+1)
         self.mass_numbers = np.zeros(self.mass_end-self.mass_start+1)
         self.water_percentage = 0
-        self.helium_value = 0
         self.mode = 0
         self.scanning = False
         self.water_17 = 0
@@ -147,7 +146,8 @@ class NovionMock(NovionBase):
 
     def get_he_value(self):
         self.random_intrument_response_time()
-        self.helium_value = random.random() * 10**-10
+        helium_value = random.random() * 10**-10
+        return helium_value
 
     def get_active_pressure_sensor(self):
         return ION_GUAGE_ACTIVE
@@ -156,6 +156,8 @@ class NovionRGA(NovionBase):
     def __init__(self, com_port="COM3", baud_rate=115200):
         super().__init__()
         self.serial_port = serial.Serial(com_port, baud_rate, timeout=1)
+        self.get_mode()
+
 
     def crc16_update(self, crc, a):
         i = 8
@@ -309,7 +311,8 @@ class NovionRGA(NovionBase):
         payload = struct.pack('<B', 0x03)
         self.send_command(command, subcommand, payload)
         self.get_mode()
-        assert self.mode == HELIUM_MODE
+        #print("he mode")
+        #assert self.mode == HELIUM_MODE
 
     def change_to_rga(self):
         command = 0x81
@@ -317,16 +320,27 @@ class NovionRGA(NovionBase):
         payload = struct.pack('<B', 0x02)
         self.send_command(command, subcommand, payload)
         self.get_mode()
-        assert self.mode == RGA_MODE
+        #print("rga mode")
+
+        #assert self.mode == RGA_MODE
 
     def get_mode(self):
         command = 0x81
         subcommand = 0x38
         data = self.send_command(command, subcommand)
-        self.mode = struct.unpack('<i', data[:4])
+        m, = struct.unpack('<i', data[:4])
+        self.mode = m
     
     def get_he_value(self):
         command = 0x81
         subcommand = 0x31
         data = self.send_command(command, subcommand)
-        self.helium_value = struct.unpack('<f', data[:4])
+        #print(data)
+        #print(type(data))
+        if type(data) == int:
+            #print(data)
+            return None
+        helium_value, = struct.unpack('<f', data[:4])
+        #print(helium_value)
+        return helium_value
+        

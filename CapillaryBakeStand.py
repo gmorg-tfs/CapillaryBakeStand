@@ -17,8 +17,8 @@ class CapillaryBakeStandGui:
         self.root.title("Capillary Bake Stand")
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight() - 30
-        #self.test_stand_controller = CapillaryBakeStandController()
-        self.test_stand_controller = CapillaryBakeStandControllerSimulator()
+        self.test_stand_controller = CapillaryBakeStandController()
+        #self.test_stand_controller = CapillaryBakeStandControllerSimulator()
 
         text_font = ("Helvetica", 14)
         self.state = tk.StringVar()
@@ -67,10 +67,15 @@ class CapillaryBakeStandGui:
         self.helium_readback_label = tk.Label(root, textvariable=self.helium_readback, font=text_font)
 
         self.helium_mode_button_text = tk.StringVar()
-        self.helium_mode_button_text.set("Helium: False")
+        if self.test_stand_controller.novion.mode == RGA_MODE:
+            self.helium_mode_button_text.set("Helium: False")
+        elif self.test_stand_controller.novion.mode == HELIUM_MODE:
+            self.helium_mode_button_text.set("Helium: True")
+        else:
+            self.helium_mode_button_text.set("Helium: n/a")
         self.helium_mode_button = tk.Button(root, textvariable=self.helium_mode_button_text, command=self.handle_helium_mode_buton, font=text_font)
 
-        self.UPDATE_PERIOD = 250 #ms  how often to update gui. control loop is run once per update and will log data at controller specified logging frequency
+        self.UPDATE_PERIOD = 1000 #ms  how often to update gui. control loop is run once per update and will log data at controller specified logging frequency
         self.PLOT_UPDATE_PERIOD = 5 #seconds 
         self.time_since_last_plot = 0
         
@@ -178,12 +183,18 @@ class CapillaryBakeStandGui:
         self.state.set(f"State: {self.current_state_as_string()}")
         self.manual_heater_button_text.set(f"Heater On: {self.test_stand_controller.heater_on}")
         self.manual_fan_button_text.set(f"Cooler On: {self.test_stand_controller.cooler_on}")
-        self.water_percentage_text.set(f"Water Percentage: {self.test_stand_controller.novion.get_water_content():.2f}")
-        self.helium_readback.set(f"Helium: {self.test_stand_controller.novion.helium_value:.2e}")
-
+        self.water_percentage_text.set(f"Water Percentage: {(self.test_stand_controller.novion.get_water_content()*100):.2f}%")
+        try:
+            if self.test_stand_controller.novion.mode == HELIUM_MODE:
+                self.helium_readback.set(f"Helium: {self.test_stand_controller.novion.get_he_value():.2e}")
+        except Exception:
+            self.helium_readback.set(f"Helium: n/a")
         if len(self.test_stand_controller.temperature_data) > 0:
             self.temperature_readback.set(f"Temperature: {self.test_stand_controller.last_temperature:.2f}")
-            self.pressure_readback.set(f"Pressure: {self.test_stand_controller.last_pressure:.2e}")
+            try:
+                self.pressure_readback.set(f"Pressure: {self.test_stand_controller.last_pressure:.2e}")
+            except Exception:
+                self.pressure_readback.set(f"Pressure: err")
         if not self.test_stand_controller.manual_override:
             if self.test_stand_controller.current_state == self.test_stand_controller.states["heating"]:
                 total_remaining_time_s = self.test_stand_controller.HEATING_TIME - (time.time() - self.test_stand_controller.start_time)
@@ -211,8 +222,9 @@ class CapillaryBakeStandControllerBase:
     def __init__(self):
         #state
         self.running = False
+        self.measureing = False
         self.cycle_count = 0
-        self.number_of_cycles_to_run = 100
+        self.number_of_cycles_to_run = 24 * 7
         self.start_time = 0
         self.states = {"heating": 1, "cooling": 2}
         self.current_state = 0
@@ -278,30 +290,32 @@ class CapillaryBakeStandControllerBase:
                     else:
                         self.Stop()
             self.LogDataForPlotting()
-            if not self.logging_thread.is_alive():
+            if self.running and not self.logging_thread.is_alive() and not self.measureing:
                 self.logging_thread = threading.Thread(target=self.MeasureDataAndSaveToFile)
                 self.logging_thread.start()
+                #self.logging_thread.join()
+                #self.MeasureDataAndSaveToFile()
         except Exception as e:
             print(e)
             self.Stop()
 
     def MeasureDataAndSaveToFile(self):
+        self.measureing = True
         try:
-            if self.novion.can_scan():
-                pressure_novion = self.MeasurePressure()
-                if pressure_novion == None:
-                    return
-                temperature_voltage_raw, temperature = self.MeasureTemperature()
-                if self.novion.mode == HELIUM_MODE:
-                    self.novion.get_he_value()
-                elif self.novion.mode == RGA_MODE:
-                    rga_scan = self.novion.scan()
-                    if self.running:
-                        self.logger.log(f"{time.time()},{pressure_novion},{temperature},{rga_scan}")
-                        self.last_pressure = pressure_novion
-                        self.last_temperature = temperature
+            #if self.novion.can_scan():
+            pressure_novion = self.MeasurePressure()
+            if pressure_novion == None:
+                self.measureing = False
+                return
+            temperature_voltage_raw, temperature = self.MeasureTemperature()
+            if self.novion.mode == RGA_MODE:
+                rga_scan = self.novion.scan()        
+                self.logger.log(f"{time.time()},{pressure_novion},{temperature},{rga_scan}")
+                self.last_pressure = pressure_novion
+                self.last_temperature = temperature
         except Exception as e:
             print(e)
+        self.measureing = False
 
     def LogDataForPlotting(self):
         temperature_voltage_raw, temperature = self.MeasureTemperature()
@@ -415,19 +429,23 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
         eDAC(self.device.handle, channel, voltage)
 
     def TurnFanOn(self):
-        super().TurnFanOn(self)
+        #super().TurnFanOn(self)
+        self.cooler_on = True
         self.SetVoltageOnDac(self.COOLER_CHANNEL, self.COOLER_VOLTAGE)
 
     def TurnFanOff(self):
-        super().TurnFanOff(self)
+        #super().TurnFanOff(self)
+        self.cooler_on = False
         self.SetVoltageOnDac(self.COOLER_CHANNEL, 0)
 
     def TurnHeaterOn(self):
-        super().TurnHeaterOn(self)
+        #super().TurnHeaterOn(self)
+        self.heater_on = True
         self.SetVoltageOnDac(self.HEATER_CHANNEL, self.HEATER_VOLTAGE)
 
     def TurnHeaterOff(self):
-        super().TurnHeaterOff(self)
+        #super().TurnHeaterOff(self)
+        self.heater_on = False
         self.SetVoltageOnDac(self.HEATER_CHANNEL, 0)
 
 
