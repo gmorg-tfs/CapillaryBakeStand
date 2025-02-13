@@ -186,10 +186,8 @@ class CapillaryBakeStandGui:
         self.water_percentage_text.set(f"Water Percentage: {(self.test_stand_controller.novion.get_water_content()*100):.2f}%")
         if self.test_stand_controller.novion.mode == HELIUM_MODE:
             helium_value = self.test_stand_controller.novion.get_he_value()
-            if type(helium_value) == float:
+            if helium_value is not None:
                 self.helium_readback.set(f"Helium: {helium_value:.2e}")
-            else:
-                self.helium_readback.set(f"Helium: n/a")
 
         if len(self.test_stand_controller.temperature_data) > 0:
             self.temperature_readback.set(f"Temperature: {self.test_stand_controller.last_temperature:.2f}")
@@ -243,6 +241,7 @@ class CapillaryBakeStandControllerBase:
         self.novion = NovionMock()
         self.logging_thread = threading.Thread(target=self.MeasureDataAndSaveToFile)
         self.logging_complete_event = threading.Event()
+        self.logging_complete_event.set()
         #logging
         header = "Time (s),Pressure (torr),Temperature (C)"
         for i in range(self.novion.mass_start, self.novion.mass_end + 1):
@@ -290,7 +289,7 @@ class CapillaryBakeStandControllerBase:
                     else:
                         self.Stop()
             self.LogDataForPlotting()
-            if self.running and not self.logging_complete_event.is_set():
+            if self.running and self.logging_complete_event.is_set():
                 self.logging_complete_event.clear()
                 self.logging_thread = threading.Thread(target=self.MeasureDataAndSaveToFile)
                 self.logging_thread.start()
@@ -299,13 +298,12 @@ class CapillaryBakeStandControllerBase:
             self.Stop()
 
     def MeasureDataAndSaveToFile(self):
-        self.measureing = True
         pressure_novion = self.MeasurePressure()
-        if type(pressure_novion) != float:
+        if pressure_novion is None:
             self.logging_complete_event.set()
             return
         temperature_voltage_raw, temperature = self.MeasureTemperature()
-        if self.novion.mode == RGA_MODE:
+        if self.novion.mode == RGA_MODE and self.novion.can_scan():
             rga_scan = self.novion.scan()
             if rga_scan != "":
                 self.logger.log(f"{time.time()},{pressure_novion},{temperature},{rga_scan}")
@@ -320,7 +318,7 @@ class CapillaryBakeStandControllerBase:
         temperature_voltage_raw, temperature = self.MeasureTemperature()
         #pressure_voltage_raw, pressure = self.MeasurePressure() guage has randomly shut off so we pretend it doesnt exist
         pressure_novion = self.MeasurePressure()
-        if type(pressure_novion) != float:
+        if pressure_novion is None:
             return
         self.temperature_data.append(temperature)
         self.pressure_data.append(pressure_novion)
@@ -405,7 +403,6 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
         self.COOLER_CHANNEL = 1
         self.HEATER_VOLTAGE = 5 #volts
         self.COOLER_VOLTAGE = 5 #volts
-
 
 
     def MeasureTemperature(self):

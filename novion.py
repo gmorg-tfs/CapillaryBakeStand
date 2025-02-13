@@ -68,7 +68,7 @@ class NovionBase:
         data = np.zeros(self.mass_end-self.mass_start+1)
         for _ in range(n):
             next_point = self.request_next_point()
-            if type(next_point) == int:
+            if next_point is None:
                 break #received a partial spectrum?
             ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = next_point
             data[int(mass_number)-1] = intensity
@@ -80,10 +80,8 @@ class NovionBase:
             elif mn == 19:
                 self.water_19 = intensity
 
-        data_str = ""
-        for d in data:
-            data_str += f"{d},"
-        return data_str[:-1]
+        data_str = ",".join(map(str,data))
+        return data_str
 
 
 class NovionMock(NovionBase):
@@ -93,21 +91,29 @@ class NovionMock(NovionBase):
         self.masses = np.arange(1, 76)
         self.intensitys = np.array([float(i) for i in intensitys_str.split("\t")])
         self.current_index = 0
-        self.mode = 2
+        self.mode = RGA_MODE
+        self.random_error_threshold = 0.9 # 10% chance of error
+        self.random_next_point_error_threshold = 0.97 # 3% chance of error
 
     def random_intrument_response_time(self):
         time.sleep(random.random() % 0.1)
 
     def request_pressure(self):
         self.random_intrument_response_time()
+        if random.random() > self.random_error_threshold:
+            return None
         return 1e-6 * random.random() * 10
 
     def request_number_of_points_available(self):
         self.random_intrument_response_time()
+        if random.random() > self.random_error_threshold:
+            return None
         return 75
 
     def request_next_point(self):
         self.random_intrument_response_time()
+        if random.random() > self.random_next_point_error_threshold:
+            return None
         i = self.intensitys[self.current_index]
         m = self.masses[self.current_index]
         t = self.current_index
@@ -129,11 +135,13 @@ class NovionMock(NovionBase):
 
     def get_he_value(self):
         self.random_intrument_response_time()
+        if random.random() > self.random_error_threshold:
+            return None
         helium_value = random.random() * 10**-10
         return helium_value
 
     def get_active_pressure_sensor(self):
-        return ION_GUAGE_ACTIVE
+        return self.mode
 
 class NovionRGA(NovionBase):
     def __init__(self, com_port="COM3", baud_rate=115200):
@@ -176,16 +184,16 @@ class NovionRGA(NovionBase):
     def parse_response(self, response):
         if len(response) != 24:
             print(f"Invalid response length: {len(response)}")
-            return None, INVALID_RESPONSE_LENGTH_ERROR
+            return None
         header = response[1]
         if header & NAK_MASK == 0:
-            return None, NAK_ERROR
+            return None
         crc_received = response[22] | (response[23] << 8)
         crc_calculated = self.calc_crc(response[:22])
         if crc_received != crc_calculated:
-            return None, CRC_ERROR
+            return None
         payload = response[6:22]
-        return payload, None
+        return payload
 
     def send_command(self, command, subcommand, payload=struct.pack('<B', 0x00)):
         #print(f"Command: {command}, Subcommand: {subcommand}, Payload: {payload.hex()}")
@@ -200,18 +208,13 @@ class NovionRGA(NovionBase):
             #print("No response received")
             return NO_RESPONSE_ERROR
         
-        parsed, err = self.parse_response(response)
-        if err:
-            #print(f"Error: {err}")
-            return err
-        else:
-            return parsed
+        return self.parse_response(response)
 
     def request_pressure(self):
         command = 0x20
         subcommand = 0x08
         data = self.send_command(command, subcommand)
-        if type(data) != bytes:
+        if data is None:
             return data
         pressure, = struct.unpack('<f', data[:4])
         return pressure
@@ -220,7 +223,7 @@ class NovionRGA(NovionBase):
         command = 0x83
         subcommand = 0x02
         data = self.send_command(command, subcommand)
-        if type(data) != bytes:
+        if data is None:
             return data
         sensor, = struct.unpack('<i', data[:4])
         return sensor
@@ -229,7 +232,7 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x3f
         data = self.send_command(command, subcommand)
-        if type(data) != bytes:
+        if data is None:
             return data
         n, = struct.unpack('<i', data[:4])
         return n
@@ -238,7 +241,7 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x3A
         data = self.send_command(command, subcommand)
-        if type(data) != bytes:
+        if data is None:
             return data
         ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = struct.unpack('<hhffI', data) #this is cool
         return ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number
@@ -266,7 +269,7 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x14
         data = self.send_command(command, subcommand)
-        if type(data) != bytes:
+        if data is None:
             return data
         mass_number, = struct.unpack('<f', data[:4])
         return mass_number
@@ -275,7 +278,7 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x15
         data = self.send_command(command, subcommand)
-        if type(data) != bytes:
+        if data is None:
             return data
         mass_number, = struct.unpack('<f', data[:4])
         return mass_number
@@ -302,7 +305,7 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x38
         data = self.send_command(command, subcommand)
-        if type(data) != bytes:
+        if data is None:
             return data
         mode, = struct.unpack('<i', data[:4])
         return mode
@@ -311,7 +314,7 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x31
         data = self.send_command(command, subcommand)
-        if type(data) != bytes:
+        if data is None:
             return data
         helium_value, = struct.unpack('<f', data[:4])
         return helium_value
