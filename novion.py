@@ -9,7 +9,7 @@ import random
 HELIUM_MODE = 3
 RGA_MODE = 2
 
-ION_GUAGE_ACTIVE = 1
+ION_GUAGE_ACTIVE = 2
 
 NAK_MASK = 0b00010000
 
@@ -61,47 +61,30 @@ class NovionBase:
     def can_scan(self):
         return self.get_active_pressure_sensor() == ION_GUAGE_ACTIVE
     
-    '''
-    def scan(self, temperature_data):
-
-        pressure = self.request_pressure()
-        temperature = temperature_data[-1]
-        n = self.request_number_of_points_available()
-        for _ in range(n):
-            ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = self.request_next_point()
-            self.intensitys[tuple_number] = intensity
-            self.mass_numbers[tuple_number] = mass_number
-            if int(mass_number) == 18:
-                self.water_percentage = intensity
-        data_str = f"{time.time()},{pressure},{temperature},"
-        for i in self.intensitys:
-            data_str += f"{i},"
-        data_str = data_str[:-1]
-        self.logger.log(data_str)
-        '''
-    
     def scan(self):
-        try:
-            n = self.request_number_of_points_available()
-            data = np.zeros(self.mass_end-self.mass_start+1)
-            for _ in range(n):
-                ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = self.request_next_point()
-                data[int(mass_number)-1] = intensity
-                mn = int(mass_number)
-                if mn == 17:
-                    self.water_17 = intensity
-                elif mn == 18:
-                    self.water_18 = intensity
-                elif mn == 19:
-                    self.water_19 = intensity
+        n = self.request_number_of_points_available()
+        if n != self.mass_end-self.mass_start+1:
+            return ""
+        data = np.zeros(self.mass_end-self.mass_start+1)
+        for _ in range(n):
+            next_point = self.request_next_point()
+            if type(next_point) == int:
+                break #received a partial spectrum?
+            ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = next_point
+            data[int(mass_number)-1] = intensity
+            mn = int(mass_number)
+            if mn == 17:
+                self.water_17 = intensity
+            elif mn == 18:
+                self.water_18 = intensity
+            elif mn == 19:
+                self.water_19 = intensity
 
-            data_str = ""
-            for d in data:
-                data_str += f"{d},"
-            return data_str[:-1]
-        except Exception as e:
-            print(e)
-            return None    
+        data_str = ""
+        for d in data:
+            data_str += f"{d},"
+        return data_str[:-1]
+
 
 class NovionMock(NovionBase):
     def __init__(self):
@@ -156,7 +139,7 @@ class NovionRGA(NovionBase):
     def __init__(self, com_port="COM3", baud_rate=115200):
         super().__init__()
         self.serial_port = serial.Serial(com_port, baud_rate, timeout=1)
-        self.get_mode()
+        self.mode = self.get_mode()
 
 
     def crc16_update(self, crc, a):
@@ -224,15 +207,12 @@ class NovionRGA(NovionBase):
         else:
             return parsed
 
-
-
     def request_pressure(self):
         command = 0x20
         subcommand = 0x08
         data = self.send_command(command, subcommand)
-        if data == NAK_ERROR:
-            #NAK: no total pressre available
-            return None
+        if type(data) != bytes:
+            return data
         pressure, = struct.unpack('<f', data[:4])
         return pressure
     
@@ -240,19 +220,17 @@ class NovionRGA(NovionBase):
         command = 0x83
         subcommand = 0x02
         data = self.send_command(command, subcommand)
+        if type(data) != bytes:
+            return data
         sensor, = struct.unpack('<i', data[:4])
         return sensor
-
-        
 
     def request_number_of_points_available(self):
         command = 0x81
         subcommand = 0x3f
         data = self.send_command(command, subcommand)
-        if data is None:
-            #NAK: no points available, mode is wrong or pressure is too high
-            #RGA & He is only usable in ionization mode
-            return None
+        if type(data) != bytes:
+            return data
         n, = struct.unpack('<i', data[:4])
         return n
 
@@ -260,9 +238,8 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x3A
         data = self.send_command(command, subcommand)
-        if data is None:
-            #NAK: no points available, mode is wrong or pressure is too high
-            return None
+        if type(data) != bytes:
+            return data
         ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = struct.unpack('<hhffI', data) #this is cool
         return ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number
 
@@ -289,6 +266,8 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x14
         data = self.send_command(command, subcommand)
+        if type(data) != bytes:
+            return data
         mass_number, = struct.unpack('<f', data[:4])
         return mass_number
 
@@ -296,23 +275,21 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x15
         data = self.send_command(command, subcommand)
+        if type(data) != bytes:
+            return data
         mass_number, = struct.unpack('<f', data[:4])
         return mass_number
 
     def set_scan_range(self, start_mass_number, end_mass_number):
         self.set_scan_start(start_mass_number)
         self.set_scan_end(end_mass_number)
-        #assert get_scan_start(serial_port) == start_mass_number
-        #assert get_scan_end(serial_port) == end_mass_number
 
     def change_to_he_leak_detector(self):
         command = 0x81
         subcommand = 0x39
         payload = struct.pack('<B', 0x03)
         self.send_command(command, subcommand, payload)
-        self.get_mode()
-        #print("he mode")
-        #assert self.mode == HELIUM_MODE
+        self.mode = self.get_mode()
 
     def change_to_rga(self):
         command = 0x81
@@ -320,27 +297,22 @@ class NovionRGA(NovionBase):
         payload = struct.pack('<B', 0x02)
         self.send_command(command, subcommand, payload)
         self.get_mode()
-        #print("rga mode")
-
-        #assert self.mode == RGA_MODE
 
     def get_mode(self):
         command = 0x81
         subcommand = 0x38
         data = self.send_command(command, subcommand)
-        m, = struct.unpack('<i', data[:4])
-        self.mode = m
+        if type(data) != bytes:
+            return data
+        mode, = struct.unpack('<i', data[:4])
+        return mode
     
     def get_he_value(self):
         command = 0x81
         subcommand = 0x31
         data = self.send_command(command, subcommand)
-        #print(data)
-        #print(type(data))
-        if type(data) == int:
-            #print(data)
-            return None
+        if type(data) != bytes:
+            return data
         helium_value, = struct.unpack('<f', data[:4])
-        #print(helium_value)
         return helium_value
         
