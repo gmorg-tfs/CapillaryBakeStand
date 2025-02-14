@@ -63,22 +63,21 @@ class NovionBase:
     
     def scan(self):
         n = self.request_number_of_points_available()
-        if n != self.mass_end-self.mass_start+1:
-            return ""
         data = np.zeros(self.mass_end-self.mass_start+1)
-        for _ in range(n):
-            next_point = self.request_next_point()
-            if next_point is None:
-                break #received a partial spectrum?
-            ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = next_point
-            data[int(mass_number)-1] = intensity
-            mn = int(mass_number)
-            if mn == 17:
-                self.water_17 = intensity
-            elif mn == 18:
-                self.water_18 = intensity
-            elif mn == 19:
-                self.water_19 = intensity
+        if n == self.mass_end-self.mass_start+1:
+            for _ in range(n):
+                next_point = self.request_next_point()
+                if next_point is None:
+                    break #received a partial spectrum?
+                ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = next_point
+                data[int(mass_number)-1] = intensity
+                mn = int(mass_number)
+                if mn == 17:
+                    self.water_17 = intensity
+                elif mn == 18:
+                    self.water_18 = intensity
+                elif mn == 19:
+                    self.water_19 = intensity
 
         data_str = ",".join(map(str,data))
         return data_str
@@ -92,11 +91,11 @@ class NovionMock(NovionBase):
         self.intensitys = np.array([float(i) for i in intensitys_str.split("\t")])
         self.current_index = 0
         self.mode = RGA_MODE
-        self.random_error_threshold = 0.9 # 10% chance of error
-        self.random_next_point_error_threshold = 0.97 # 3% chance of error
+        self.random_error_threshold = 0.95
+        self.random_next_point_error_threshold = 0.99
 
     def random_intrument_response_time(self):
-        time.sleep(random.random() % 0.1)
+        time.sleep(0.05 + random.random() % 0.1)
 
     def request_pressure(self):
         self.random_intrument_response_time()
