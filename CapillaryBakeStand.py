@@ -8,7 +8,7 @@ from novion import *
 from collections import deque
 
 
-MAX_DATA_POINTS = 10000
+MAX_DATA_POINTS = 2048
 
 class CapillaryBakeStandGui:
     def __init__(self, root):
@@ -76,7 +76,7 @@ class CapillaryBakeStandGui:
         self.helium_mode_button = tk.Button(root, textvariable=self.helium_mode_button_text, command=self.handle_helium_mode_buton, font=text_font)
 
         self.UPDATE_PERIOD = 1000 #ms  how often to update gui. control loop is run once per update and will log data at controller specified logging frequency
-        self.PLOT_UPDATE_PERIOD = 5 #seconds 
+        self.PLOT_UPDATE_PERIOD = 0.25 #seconds 
         self.time_since_last_plot = 0
         
         self.fig,  self.temperature_axis = plt.subplots(figsize=(screen_width/100, screen_height/100), dpi=100)
@@ -250,6 +250,8 @@ class CapillaryBakeStandControllerBase:
                              _file_name_base="toaster_data_",
                              _file_extension=".csv",
                              _header=header)
+        self.last_log_time = 0
+        self.LOGGING_PERIOD = 10 #seconds
 
     def Stop(self):
         self.running = False
@@ -277,6 +279,9 @@ class CapillaryBakeStandControllerBase:
         self.TurnHeaterOff()
         self.TurnFanOn()
 
+    def TimeForNextLog(self):
+        return time.time() - self.last_log_time >= self.LOGGING_PERIOD
+
     def ControlLoop(self):
         try:
             if not self.manual_override:
@@ -289,7 +294,7 @@ class CapillaryBakeStandControllerBase:
                     else:
                         self.Stop()
             self.LogDataForPlotting()
-            if self.running and self.logging_complete_event.is_set():
+            if self.running and self.logging_complete_event.is_set() and self.TimeForNextLog():
                 self.logging_complete_event.clear()
                 self.logging_thread = threading.Thread(target=self.MeasureDataAndSaveToFile)
                 self.logging_thread.start()
@@ -305,11 +310,9 @@ class CapillaryBakeStandControllerBase:
         temperature_voltage_raw, temperature = self.MeasureTemperature()
         if self.novion.mode == RGA_MODE and self.novion.can_scan():
             rga_scan = self.novion.scan()
-            if rga_scan != "":
-                self.logger.log(f"{time.time()},{pressure_novion},{temperature},{rga_scan}")
-            else:                
-                self.logger.log(f"{time.time()},{pressure_novion},{temperature},{None}")
-
+            self.logger.log(f"{time.time()},{pressure_novion},{temperature},{rga_scan}")
+            self.last_log_time = time.time()
+        
         self.last_pressure = pressure_novion
         self.last_temperature = temperature
         self.logging_complete_event.set()
@@ -352,6 +355,7 @@ class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
         super().__init__()
         self.HEATING_TIME = 20  #seconds
         self.COOLING_TIME = 20  #seconds
+        self.number_of_cycles_to_run = 1000
 
     def MeasureTemperature(self):
         if len(self.temperature_data) == 0:
