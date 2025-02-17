@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-file_path = "C:\\data\\toaster\\toaster_data_10.csv"
+file_path = "C:\\data\\toaster\\toaster_data_24.csv"
 
 def load_data_from_file(path):
     data = np.genfromtxt(path, delimiter=',', skip_header=1)
@@ -21,7 +21,8 @@ def plot_rga_mass_range(masses, rga, time):
     for m in masses:
         for i in range(len(data)-1):
             data[i] += rga[i, m-1]
-    plt.plot(time, data)    
+    plt.plot(time, data, ".")    
+
 
 
 plot_rga_mass_range([17, 18, 19], rga, time)

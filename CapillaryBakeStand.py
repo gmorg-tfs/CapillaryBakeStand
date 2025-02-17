@@ -6,6 +6,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import threading
 from novion import *
 from collections import deque
+from datetime import date
 
 
 MAX_DATA_POINTS = 2048
@@ -17,8 +18,8 @@ class CapillaryBakeStandGui:
         self.root.title("Capillary Bake Stand")
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight() - 30
-        #self.test_stand_controller = CapillaryBakeStandController()
-        self.test_stand_controller = CapillaryBakeStandControllerSimulator()
+        self.test_stand_controller = CapillaryBakeStandController()
+        #self.test_stand_controller = CapillaryBakeStandControllerSimulator()
 
         text_font = ("Helvetica", 14)
         self.state = tk.StringVar()
@@ -110,12 +111,14 @@ class CapillaryBakeStandGui:
         self.update()
 
     def handle_helium_mode_buton(self):
-        if self.test_stand_controller.novion.mode == 2: #mode 2 is rga
+        if self.test_stand_controller.novion.mode == RGA_MODE:
             self.test_stand_controller.novion.change_to_he_leak_detector()
             self.helium_mode_button_text.set("Helium: True")
-        else:
+        elif self.test_stand_controller.novion.mode == HELIUM_MODE:
             self.test_stand_controller.novion.change_to_rga()
             self.helium_mode_button_text.set("Helium: False")
+        else:
+            self.helium_mode_button_text.set("Unknown")
 
     def update_plot(self):
         threading.Thread(target=self._update_plot).start()
@@ -247,7 +250,7 @@ class CapillaryBakeStandControllerBase:
         for i in range(self.novion.mass_start, self.novion.mass_end + 1):
             header += f",{i}"
         self.logger = Logger(_base_path="C:\\Data\\toaster\\",
-                             _file_name_base="toaster_data_",
+                             _file_name_base=f"{date.today().isoformat().replace("-", "_")}_toaster_data_",
                              _file_extension=".csv",
                              _header=header)
         self.last_log_time = 0
@@ -419,7 +422,11 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
         return voltage_raw, temperature
 
     def MeasurePressure(self):
-        return self.novion.request_pressure()
+        p = self.novion.request_pressure()
+        if p is None or p < 1e-12:
+            return None
+        else:
+            return p
 
     def SetVoltageOnDac(self, channel, voltage):
         eDAC(self.device.handle, channel, voltage)

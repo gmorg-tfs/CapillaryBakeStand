@@ -298,7 +298,7 @@ class NovionRGA(NovionBase):
         subcommand = 0x39
         payload = struct.pack('<B', 0x02)
         self.send_command(command, subcommand, payload)
-        self.get_mode()
+        self.mode = self.get_mode()
 
     def get_mode(self):
         command = 0x81
