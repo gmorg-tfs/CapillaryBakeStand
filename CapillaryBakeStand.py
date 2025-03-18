@@ -76,7 +76,7 @@ class CapillaryBakeStandGui:
             self.helium_mode_button_text.set("Helium: n/a")
         self.helium_mode_button = tk.Button(root, textvariable=self.helium_mode_button_text, command=self.handle_helium_mode_buton, font=text_font)
 
-        self.UPDATE_PERIOD = 1000 #ms  how often to update gui. control loop is run once per update and will log data at controller specified logging frequency
+        self.UPDATE_PERIOD = 1000 #ms 
         self.PLOT_UPDATE_PERIOD = 0.25 #seconds 
         self.time_since_last_plot = 0
         
@@ -126,14 +126,18 @@ class CapillaryBakeStandGui:
     def _update_plot(self):
         if len(self.test_stand_controller.time) == 0:
             return
-        self.temperature_axis.cla()
-        self.pressure_axis.cla()
-        self.temperature_axis.plot(self.test_stand_controller.time, self.test_stand_controller.temperature_data, color='red')
-        self.pressure_axis.semilogy(self.test_stand_controller.time, self.test_stand_controller.pressure_data)
-        x_axis = [self.test_stand_controller.time[0], self.test_stand_controller.time[(len(self.test_stand_controller.time)-1)//2], self.test_stand_controller.time[-1]]
-        self.pressure_axis.set_xticks(x_axis)
-        self.canvas.draw()
-        self.canvas.flush_events()
+        try:
+            self.temperature_axis.cla()
+            self.pressure_axis.cla()
+            time, temperature, pressure = self.test_stand_controller.TimeTemperaturePressure()
+            self.temperature_axis.plot(time, temperature, color='red')
+            self.pressure_axis.semilogy(time, pressure)
+            x_axis = [time[0], time[(len(self.test_stand_controller.time)-1)//2], time[-1]]
+            self.pressure_axis.set_xticks(x_axis)
+            self.canvas.draw()
+            self.canvas.flush_events()
+        except Exception as e:
+            print(e)
 
     def manual_fan_control(self):
         if self.test_stand_controller.manual_override:
@@ -180,43 +184,48 @@ class CapillaryBakeStandGui:
             return "Manual Override"
     
     def update(self):
-        self.test_stand_controller.ControlLoop()
+        try:
+            if self.test_stand_controller.control_loop_completed_event.is_set():
+                threading.Thread(target=self.test_stand_controller.ControlLoop).start()
 
-        self.cycles.set(f"Cycles Completed: {self.test_stand_controller.cycle_count}/{self.test_stand_controller.number_of_cycles_to_run}")
-        self.state.set(f"State: {self.current_state_as_string()}")
-        self.manual_heater_button_text.set(f"Heater On: {self.test_stand_controller.heater_on}")
-        self.manual_fan_button_text.set(f"Cooler On: {self.test_stand_controller.cooler_on}")
-        self.water_percentage_text.set(f"Water Percentage: {(self.test_stand_controller.novion.get_water_content()*100):.2f}%")
-        if self.test_stand_controller.novion.mode == HELIUM_MODE:
-            helium_value = self.test_stand_controller.novion.get_he_value()
-            if helium_value is not None:
-                self.helium_readback.set(f"Helium: {helium_value:.2e}")
+            self.cycles.set(f"Cycles Completed: {self.test_stand_controller.cycle_count}/{self.test_stand_controller.number_of_cycles_to_run}")
+            self.state.set(f"State: {self.current_state_as_string()}")
+            self.manual_heater_button_text.set(f"Heater On: {self.test_stand_controller.heater_on}")
+            self.manual_fan_button_text.set(f"Cooler On: {self.test_stand_controller.cooler_on}")
+            self.water_percentage_text.set(f"Water Percentage: {(self.test_stand_controller.novion.get_water_content()*100):.2f}%")
+            if self.test_stand_controller.novion.mode == HELIUM_MODE:
+                helium_value = self.test_stand_controller.novion.get_he_value()
+                if helium_value is not None:
+                    self.helium_readback.set(f"Helium: {helium_value:.2e}")
 
-        if len(self.test_stand_controller.temperature_data) > 0:
-            self.temperature_readback.set(f"Temperature: {self.test_stand_controller.last_temperature:.2f}")
-            self.pressure_readback.set(f"Pressure: {self.test_stand_controller.last_pressure:.2e}")
+            if len(self.test_stand_controller.temperature_data) > 0:
+                self.temperature_readback.set(f"Temperature: {self.test_stand_controller.last_temperature:.2f}")
+                self.pressure_readback.set(f"Pressure: {self.test_stand_controller.last_pressure:.2e}")
 
-        if not self.test_stand_controller.manual_override:
-            if self.test_stand_controller.current_state == self.test_stand_controller.states["heating"]:
-                total_remaining_time_s = self.test_stand_controller.HEATING_TIME - (time.time() - self.test_stand_controller.start_time)
-                minutes = total_remaining_time_s // 60
-                seconds = total_remaining_time_s % 60
-                self.time.set(f"Time Left In State: {int(minutes)}:{int(seconds)}")
-                self.state_label.config(foreground="red")
-            elif self.test_stand_controller.current_state == self.test_stand_controller.states["cooling"]:
-                total_remaining_time_s = self.test_stand_controller.COOLING_TIME - (time.time() - self.test_stand_controller.start_time)
-                minutes = total_remaining_time_s // 60
-                seconds = total_remaining_time_s % 60
-                self.time.set(f"Time Left In State: {int(minutes)}:{int(seconds)}")
-                self.state_label.config(foreground="blue")
-        else:
-            self.time.set(f"Time Left In State: ∞")
-        
-        if time.time() - self.time_since_last_plot >= self.PLOT_UPDATE_PERIOD:
-            self.time_since_last_plot = time.time()
-            self.update_plot()
+            if not self.test_stand_controller.manual_override:
+                if self.test_stand_controller.current_state == self.test_stand_controller.states["heating"]:
+                    total_remaining_time_s = self.test_stand_controller.HEATING_TIME - (time.time() - self.test_stand_controller.start_time)
+                    minutes = total_remaining_time_s // 60
+                    seconds = total_remaining_time_s % 60
+                    self.time.set(f"Time Left In State: {int(minutes)}:{int(seconds)}")
+                    self.state_label.config(foreground="red")
+                elif self.test_stand_controller.current_state == self.test_stand_controller.states["cooling"]:
+                    total_remaining_time_s = self.test_stand_controller.COOLING_TIME - (time.time() - self.test_stand_controller.start_time)
+                    minutes = total_remaining_time_s // 60
+                    seconds = total_remaining_time_s % 60
+                    self.time.set(f"Time Left In State: {int(minutes)}:{int(seconds)}")
+                    self.state_label.config(foreground="blue")
+            else:
+                self.time.set(f"Time Left In State: ∞")
+            
+            if time.time() - self.time_since_last_plot >= self.PLOT_UPDATE_PERIOD:
+                self.time_since_last_plot = time.time()
+                self.update_plot()
 
-        self.root.after(self.UPDATE_PERIOD, self.update)
+            self.root.after(self.UPDATE_PERIOD, self.update)
+        except Exception as e:
+            print(e)
+            self.root.after(self.UPDATE_PERIOD, self.update)
 
 
 class CapillaryBakeStandControllerBase:
@@ -245,6 +254,13 @@ class CapillaryBakeStandControllerBase:
         self.logging_thread = threading.Thread(target=self.MeasureDataAndSaveToFile)
         self.logging_complete_event = threading.Event()
         self.logging_complete_event.set()
+
+        self.control_loop_completed_event = threading.Event()
+        self.control_loop_completed_event.set()
+
+        self.logging_for_plotting_complete_event = threading.Event()
+        self.logging_for_plotting_complete_event.set()
+
         #logging
         header = "Time (s),Pressure (torr),Temperature (C)"
         for i in range(self.novion.mass_start, self.novion.mass_end + 1):
@@ -255,6 +271,7 @@ class CapillaryBakeStandControllerBase:
                              _header=header)
         self.last_log_time = 0
         self.LOGGING_PERIOD = 10 #seconds
+        self.data_lock = threading.Lock()
 
     def Stop(self):
         self.running = False
@@ -287,6 +304,7 @@ class CapillaryBakeStandControllerBase:
 
     def ControlLoop(self):
         try:
+            self.control_loop_completed_event.clear()
             if not self.manual_override:
                 if self.current_state == self.states["heating"] and time.time() - self.start_time >= self.HEATING_TIME:
                     self.StartCooling()
@@ -296,13 +314,16 @@ class CapillaryBakeStandControllerBase:
                         self.StartHeating()
                     else:
                         self.Stop()
-            self.LogDataForPlotting()
+            if self.logging_for_plotting_complete_event.is_set():
+                threading.Thread(target=self.LogDataForPlotting()).start()
             if self.running and self.logging_complete_event.is_set() and self.TimeForNextLog():
                 self.logging_complete_event.clear()
                 self.logging_thread = threading.Thread(target=self.MeasureDataAndSaveToFile)
                 self.logging_thread.start()
+            self.control_loop_completed_event.set()
         except Exception as e:
             print(e)
+            self.control_loop_completed_event.set()
             self.Stop()
 
     def MeasureDataAndSaveToFile(self):
@@ -321,18 +342,31 @@ class CapillaryBakeStandControllerBase:
         self.logging_complete_event.set()
 
     def LogDataForPlotting(self):
+        self.logging_for_plotting_complete_event.clear()
         temperature_voltage_raw, temperature = self.MeasureTemperature()
+        if temperature is None:
+            self.logging_for_plotting_complete_event.set()
+            return
         #pressure_voltage_raw, pressure = self.MeasurePressure() guage has randomly shut off so we pretend it doesnt exist
         pressure_novion = self.MeasurePressure()
         if pressure_novion is None:
+            self.logging_for_plotting_complete_event.set()
             return
-        self.temperature_data.append(temperature)
-        self.pressure_data.append(pressure_novion)
-        time_struct = time.localtime()
-        self.time.append(f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}")
-        self.last_temperature = temperature
-        self.last_pressure = pressure_novion
+        with self.data_lock:
+            self.temperature_data.append(temperature)
+            self.pressure_data.append(pressure_novion)
+            time_struct = time.localtime()
+            self.time.append(f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}")
+            self.last_temperature = temperature
+            self.last_pressure = pressure_novion
+        self.logging_for_plotting_complete_event.set()
 
+    def TimeTemperaturePressure(self):
+        with self.data_lock:
+            time = list(self.time)
+            temperature = list(self.temperature_data)   
+            pressure = list(self.pressure_data)
+        return time, temperature, pressure
 
     def MeasureTemperature(self):
         Exception("Not Implemented")
@@ -356,8 +390,8 @@ class CapillaryBakeStandControllerBase:
 class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
     def __init__(self):
         super().__init__()
-        self.HEATING_TIME = 20  #seconds
-        self.COOLING_TIME = 20  #seconds
+        #self.HEATING_TIME = 20  #seconds
+        #self.COOLING_TIME = 20  #seconds
         self.number_of_cycles_to_run = 1000
 
     def MeasureTemperature(self):
@@ -413,13 +447,18 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
 
 
     def MeasureTemperature(self):
-        voltage_raw = eAIN(self.device.handle, self.THERMOCOUPLE_CHANNEL)
-        voltage = (voltage_raw - self.THERMOCOUPLE_VOLTAGE_OFFSET) / self.THERMOCOUPLE_VOLTAGE_GAIN
-        internal_temp = self.device.getTemperature()
-        temperature = TCVoltsToTemp(LJ_ttK, voltage, internal_temp)         #K
-        #t = (1.8 * t) - 459.67                                             #F
-        temperature -= 278.00                                               #K
-        return voltage_raw, temperature
+        try:
+            voltage_raw = eAIN(self.device.handle, self.THERMOCOUPLE_CHANNEL)
+            voltage = (voltage_raw - self.THERMOCOUPLE_VOLTAGE_OFFSET) / self.THERMOCOUPLE_VOLTAGE_GAIN
+            internal_temp = self.device.getTemperature()
+            temperature = TCVoltsToTemp(LJ_ttK, voltage, internal_temp)         #K
+            #t = (1.8 * t) - 459.67                                             #F
+            temperature -= 278.00                                               #K
+            return voltage_raw, temperature
+        except Exception as e:
+            self.device = u3.U3()
+            return None, None
+    
 
     def MeasurePressure(self):
         p = self.novion.request_pressure()
