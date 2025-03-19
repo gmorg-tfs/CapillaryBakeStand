@@ -393,12 +393,9 @@ class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
         #self.HEATING_TIME = 20  #seconds
         #self.COOLING_TIME = 20  #seconds
         self.number_of_cycles_to_run = 1000
-    
-    def RandomInstrumentResponseTime(self):
-        time.sleep(0.05 + random.random() % 0.5)
 
     def MeasureTemperature(self):
-        self.RandomInstrumentResponseTime()
+        time.sleep(0.05 + random.random() % 0.1)
         if len(self.temperature_data) == 0:
             return 1.26, 25
         delta = random.random()
@@ -416,7 +413,7 @@ class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
                 return 1.26, self.temperature_data[-1]
                         
     def MeasurePressure(self):
-        self.RandomInstrumentResponseTime()
+        time.sleep(0.05 + random.random() % 0.1)
         if len(self.pressure_data) == 0:
             return 1e-6
         delta = random.random() * 1e-7 * 10
