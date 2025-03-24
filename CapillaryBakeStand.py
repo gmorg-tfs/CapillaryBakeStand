@@ -206,18 +206,20 @@ class CapillaryBakeStandGui:
                 self.pressure_readback.set(f"Pressure: {self.test_stand_controller.last_pressure:.2e}")
 
             if not self.test_stand_controller.manual_override:
+                total_remaining_time_s = 0
+                minutes = 0
+                seconds = 0
                 if self.test_stand_controller.current_state == self.test_stand_controller.states["heating"]:
                     total_remaining_time_s = self.test_stand_controller.HEATING_TIME - (time.time() - self.test_stand_controller.start_time)
-                    minutes = total_remaining_time_s // 60
-                    seconds = total_remaining_time_s % 60
-                    self.time.set(f"Time Left In State: {int(minutes)}:{int(seconds)}")
                     self.state_label.config(foreground="red")
                 elif self.test_stand_controller.current_state == self.test_stand_controller.states["cooling"]:
                     total_remaining_time_s = self.test_stand_controller.COOLING_TIME - (time.time() - self.test_stand_controller.start_time)
-                    minutes = total_remaining_time_s // 60
-                    seconds = total_remaining_time_s % 60
-                    self.time.set(f"Time Left In State: {int(minutes)}:{int(seconds)}")
                     self.state_label.config(foreground="blue")
+                minutes = int(total_remaining_time_s // 60)
+                seconds = int(total_remaining_time_s % 60)
+                if seconds < 10:
+                    seconds = f"0{seconds}"
+                self.time.set(f"Time Left In State: {minutes}:{seconds}")
             else:
                 self.time.set(f"Time Left In State: ∞")
             

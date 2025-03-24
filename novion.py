@@ -143,7 +143,7 @@ class NovionMock(NovionBase):
         return self.mode
 
 class NovionRGA(NovionBase):
-    def __init__(self, com_port="COM3", baud_rate=115200):
+    def __init__(self, com_port="COM5", baud_rate=115200):
         super().__init__()
         self.com = com_port
         self.baud = baud_rate
@@ -215,7 +215,10 @@ class NovionRGA(NovionBase):
     
     def data_check(self, data):
         if data is not None:
+            self.failed_calls = 0
             return data
+        else:
+            return None
         
         if data is None and self.failed_calls >= 2:
             try:
