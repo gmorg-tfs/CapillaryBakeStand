@@ -145,8 +145,12 @@ class NovionMock(NovionBase):
 class NovionRGA(NovionBase):
     def __init__(self, com_port="COM3", baud_rate=115200):
         super().__init__()
+        self.com = com_port
+        self.baud = baud_rate
         self.serial_port = serial.Serial(com_port, baud_rate, timeout=1)
         self.mode = self.get_mode()
+        self.failed_calls = 0
+
 
 
     def crc16_update(self, crc, a):
@@ -208,12 +212,35 @@ class NovionRGA(NovionBase):
             return NO_RESPONSE_ERROR
         
         return self.parse_response(response)
+    
+    def data_check(self, data):
+        if data is not None:
+            return data
+        
+        if data is None and self.failed_calls >= 2:
+            try:
+                print("novion lost communication")
+                self.serial_port.close()
+                time.sleep(1)
+                self.serial_port = serial.Serial(self.com, self.baud)
+                self.failed_calls = 0
+                print("novion reconnected?")
+            except Exception as e:
+                print(e)
+                print("novion failed to reconnect")
+            return None
+            
+        elif data is None and self.failed_calls < 2:
+            self.failed_calls+=1
+            print("novion failed to respond correctly")
+
+        return None
 
     def request_pressure(self):
         command = 0x20
         subcommand = 0x08
         data = self.send_command(command, subcommand)
-        if data is None:
+        if self.data_check(data) is None:
             return data
         pressure, = struct.unpack('<f', data[:4])
         return pressure
@@ -222,7 +249,7 @@ class NovionRGA(NovionBase):
         command = 0x83
         subcommand = 0x02
         data = self.send_command(command, subcommand)
-        if data is None:
+        if self.data_check(data) is None:
             return data
         sensor, = struct.unpack('<i', data[:4])
         return sensor
@@ -231,7 +258,7 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x3f
         data = self.send_command(command, subcommand)
-        if data is None:
+        if self.data_check(data) is None:
             return data
         n, = struct.unpack('<i', data[:4])
         return n
@@ -240,7 +267,7 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x3A
         data = self.send_command(command, subcommand)
-        if data is None:
+        if self.data_check(data) is None:
             return data
         ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = struct.unpack('<hhffI', data) #this is cool
         return ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number
@@ -268,7 +295,7 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x14
         data = self.send_command(command, subcommand)
-        if data is None:
+        if self.data_check(data) is None:
             return data
         mass_number, = struct.unpack('<f', data[:4])
         return mass_number
@@ -277,7 +304,7 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x15
         data = self.send_command(command, subcommand)
-        if data is None:
+        if self.data_check(data) is None:
             return data
         mass_number, = struct.unpack('<f', data[:4])
         return mass_number
@@ -304,7 +331,7 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x38
         data = self.send_command(command, subcommand)
-        if data is None:
+        if self.data_check(data) is None:
             return data
         mode, = struct.unpack('<i', data[:4])
         return mode
@@ -313,8 +340,10 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x31
         data = self.send_command(command, subcommand)
-        if data is None:
+        if self.data_check(data) is None:
             return data
         helium_value, = struct.unpack('<f', data[:4])
         return helium_value
         
+
+

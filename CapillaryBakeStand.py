@@ -130,14 +130,17 @@ class CapillaryBakeStandGui:
             self.temperature_axis.cla()
             self.pressure_axis.cla()
             time, temperature, pressure = self.test_stand_controller.TimeTemperaturePressure()
+            if len(time) < 2:
+                print("Insufficient data for plotting.")
+                return
             self.temperature_axis.plot(time, temperature, color='red')
             self.pressure_axis.semilogy(time, pressure)
-            x_axis = [time[0], time[(len(self.test_stand_controller.time)-1)//2], time[-1]]
+            x_axis = [time[0], time[(len(time)-1)//2], time[-1]] if len(time) > 2 else time
             self.pressure_axis.set_xticks(x_axis)
             self.canvas.draw()
             self.canvas.flush_events()
         except Exception as e:
-            print(e)
+            print(f"erroe updating plot: {e}")
 
     def manual_fan_control(self):
         if self.test_stand_controller.manual_override:
@@ -260,6 +263,7 @@ class CapillaryBakeStandControllerBase:
 
         self.logging_for_plotting_complete_event = threading.Event()
         self.logging_for_plotting_complete_event.set()
+        self.last_log_for_plot_time = 0
 
         #logging
         header = "Time (s),Pressure (torr),Temperature (C)"
@@ -314,7 +318,7 @@ class CapillaryBakeStandControllerBase:
                         self.StartHeating()
                     else:
                         self.Stop()
-            if self.logging_for_plotting_complete_event.is_set():
+            if self.logging_for_plotting_complete_event.is_set() or time.time() - self.last_log_for_plot_time >= 10:
                 threading.Thread(target=self.LogDataForPlotting()).start()
             if self.running and self.logging_complete_event.is_set() and self.TimeForNextLog():
                 self.logging_complete_event.clear()
@@ -323,8 +327,9 @@ class CapillaryBakeStandControllerBase:
             self.control_loop_completed_event.set()
         except Exception as e:
             print(e)
-            self.control_loop_completed_event.set()
             self.Stop()
+            self.control_loop_completed_event.set()
+
 
     def MeasureDataAndSaveToFile(self):
         pressure_novion = self.MeasurePressure()
@@ -345,13 +350,13 @@ class CapillaryBakeStandControllerBase:
         self.logging_for_plotting_complete_event.clear()
         temperature_voltage_raw, temperature = self.MeasureTemperature()
         if temperature is None:
-            self.logging_for_plotting_complete_event.set()
-            return
+            self.last_log_for_plot_time = time.time()
+            return self.logging_for_plotting_complete_event.set()
         #pressure_voltage_raw, pressure = self.MeasurePressure() guage has randomly shut off so we pretend it doesnt exist
         pressure_novion = self.MeasurePressure()
         if pressure_novion is None:
-            self.logging_for_plotting_complete_event.set()
-            return
+            self.last_log_for_plot_time = time.time()
+            return self.logging_for_plotting_complete_event.set()
         with self.data_lock:
             self.temperature_data.append(temperature)
             self.pressure_data.append(pressure_novion)
@@ -359,7 +364,8 @@ class CapillaryBakeStandControllerBase:
             self.time.append(f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}")
             self.last_temperature = temperature
             self.last_pressure = pressure_novion
-        self.logging_for_plotting_complete_event.set()
+        self.last_log_for_plot_time = time.time()
+        return self.logging_for_plotting_complete_event.set()
 
     def TimeTemperaturePressure(self):
         with self.data_lock:
