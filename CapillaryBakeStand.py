@@ -188,7 +188,7 @@ class CapillaryBakeStandGui:
     
     def update(self):
         try:
-            if self.test_stand_controller.control_loop_completed_event.is_set():
+            if self.test_stand_controller.control_loop_completed_event.is_set() or time.time() - self.test_stand_controller.last_control_loop_time >= self.test_stand_controller.CONTROL_LOOP_TIMEOUT:
                 threading.Thread(target=self.test_stand_controller.ControlLoop).start()
 
             self.cycles.set(f"Cycles Completed: {self.test_stand_controller.cycle_count}/{self.test_stand_controller.number_of_cycles_to_run}")
@@ -262,10 +262,13 @@ class CapillaryBakeStandControllerBase:
 
         self.control_loop_completed_event = threading.Event()
         self.control_loop_completed_event.set()
+        self.last_control_loop_time = 0
+        self.CONTROL_LOOP_TIMEOUT = 20 #seconds
 
         self.logging_for_plotting_complete_event = threading.Event()
         self.logging_for_plotting_complete_event.set()
-        self.last_log_for_plot_time = 0
+        self.last_log_for_plot_time = 0 #seconds
+        self.LOGGING_THREAD_TIMEOUT = 20 #seconds
 
         #logging
         header = "Time (s),Pressure (torr),Temperature (C)"
@@ -311,6 +314,7 @@ class CapillaryBakeStandControllerBase:
     def ControlLoop(self):
         try:
             self.control_loop_completed_event.clear()
+            self.last_control_loop_time = time.time()
             if not self.manual_override:
                 if self.current_state == self.states["heating"] and time.time() - self.start_time >= self.HEATING_TIME:
                     self.StartCooling()
@@ -320,7 +324,7 @@ class CapillaryBakeStandControllerBase:
                         self.StartHeating()
                     else:
                         self.Stop()
-            if self.logging_for_plotting_complete_event.is_set() or time.time() - self.last_log_for_plot_time >= 10:
+            if self.logging_for_plotting_complete_event.is_set() or time.time() - self.last_log_for_plot_time >= self.LOGGING_THREAD_TIMEOUT:
                 threading.Thread(target=self.LogDataForPlotting()).start()
             if self.running and self.logging_complete_event.is_set() and self.TimeForNextLog():
                 self.logging_complete_event.clear()
