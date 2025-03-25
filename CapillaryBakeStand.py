@@ -324,12 +324,13 @@ class CapillaryBakeStandControllerBase:
                         self.StartHeating()
                     else:
                         self.Stop()
+
             if self.logging_for_plotting_complete_event.is_set() or time.time() - self.last_log_for_plot_time >= self.LOGGING_THREAD_TIMEOUT:
-                threading.Thread(target=self.LogDataForPlotting()).start()
+                threading.Thread(target=self.LogDataForPlotting).start()
+
             if self.running and self.logging_complete_event.is_set() and self.TimeForNextLog():
-                self.logging_complete_event.clear()
-                self.logging_thread = threading.Thread(target=self.MeasureDataAndSaveToFile)
-                self.logging_thread.start()
+                threading.Thread(target=self.MeasureDataAndSaveToFile).start()
+
             self.control_loop_completed_event.set()
         except Exception as e:
             print(e)
@@ -338,18 +339,25 @@ class CapillaryBakeStandControllerBase:
 
 
     def MeasureDataAndSaveToFile(self):
-        pressure_novion = self.MeasurePressure()
-        if pressure_novion is None:
-            self.logging_complete_event.set()
-            return
-        temperature_voltage_raw, temperature = self.MeasureTemperature()
+        #pressure_novion = self.MeasurePressure()
+        self.logging_complete_event.clear()
+        #if pressure_novion is None:
+        #    self.logging_complete_event.set()
+        #    return
+        #temperature_voltage_raw, temperature = self.MeasureTemperature()
+        temperature = 0
+        pressure = 0
+        with self.data_lock:
+            temperature = self.last_temperature
+            pressure = self.last_pressure
+        
         if self.novion.mode == RGA_MODE and self.novion.can_scan():
             rga_scan = self.novion.scan()
-            self.logger.log(f"{time.time()},{pressure_novion},{temperature},{rga_scan}")
+            self.logger.log(f"{time.time()},{pressure},{temperature},{rga_scan}")
             self.last_log_time = time.time()
         
-        self.last_pressure = pressure_novion
-        self.last_temperature = temperature
+        #self.last_pressure = pressure_novion
+        #self.last_temperature = temperature
         self.logging_complete_event.set()
 
     def LogDataForPlotting(self):
