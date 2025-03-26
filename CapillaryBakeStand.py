@@ -149,6 +149,8 @@ class CapillaryBakeStandGui:
 
         self.temperature_axis.plot(time_data, temperature_data, color='red', label='Temperature (C)')
         self.pressure_axis.semilogy(time_data, pressure_data, color='blue', label='Pressure (torr)')
+        x_axis = [time[0], time[(len(time)-1)//2], time[-1]] if len(time) > 2 else time
+        self.pressure_axis.set_xticks(x_axis)
 
         self.temperature_axis.set_xlabel("Time (s)")
 
