@@ -131,7 +131,7 @@ class CapillaryBakeStandGui:
             self.pressure_axis.cla()
             time, temperature, pressure = self.test_stand_controller.TimeTemperaturePressure()
             if len(time) < 2:
-                print("Insufficient data for plotting.")
+                #print("Insufficient data for plotting.")
                 return
             self.temperature_axis.plot(time, temperature, color='red')
             self.pressure_axis.semilogy(time, pressure)
@@ -501,7 +501,7 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
 
 
     def MeasureTemperature(self):
-        voltage_raw = self.ReadVoltage(self.device, self.THERMOCOUPLE_CHANNEL)
+        voltage_raw = self.ReadVoltage(self.THERMOCOUPLE_CHANNEL)
         if voltage_raw is None:
             return None
         voltage = (voltage_raw - self.THERMOCOUPLE_VOLTAGE_OFFSET) / self.THERMOCOUPLE_VOLTAGE_GAIN
@@ -525,9 +525,7 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
 
     def TurnFanOn(self):
         self.cooler_on = True
-        if self.SetVoltageOnDac(self.COOLER_CHANNEL, self.COOLER_VOLTAGE):
-            return
-        else:
+        self.SetVoltageOnDac(self.COOLER_CHANNEL, self.COOLER_VOLTAGE)
 
 
     def TurnFanOff(self):

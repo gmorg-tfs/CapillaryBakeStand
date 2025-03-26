@@ -1,8 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import glob
 
+#file_path = "C:\\data\\toaster\\toaster_data_24.csv"
 
-file_path = "C:\\data\\toaster\\toaster_data_24.csv"
+def get_most_recent_data_file(base_path):
+    files = glob.glob(base_path + "2*.csv") #good for the next ~1000 years
+    return files[-1]
+
 
 def load_data_from_file(path):
     data = np.genfromtxt(path, delimiter=',', skip_header=1)
@@ -13,19 +18,34 @@ def load_data_from_file(path):
     rga = data[:, 3:79]
     return time, pressure, temperature, masses, rga
 
-time, pressure, temperature, masses, rga = load_data_from_file(file_path)
 
+file_path = get_most_recent_data_file("C:\\data\\toaster\\")
+time, pressure, temperature, masses, rga = load_data_from_file(file_path)
+time = (time - time[0])/60
 
 def plot_rga_mass_range(masses, rga, time):
     data = np.zeros(len(rga))
     for m in masses:
         for i in range(len(data)-1):
             data[i] += rga[i, m-1]
-    plt.plot(time, data, ".")    
+    plt.plot(time, data, ".")
+    plt.xlabel("Time (min)")
+    plt.ylabel("% water")
 
 
+def plot_temperature_pressure(time, temperature, pressure):
+    fig, ax1 = plt.subplots()
+    ax1.plot(time, temperature, "r.")
+    ax1.set_ylabel("Temperature (C)", color="r")
+    ax2 = ax1.twinx()
+    ax2.plot(time, pressure, "b.")
+    ax2.set_ylabel("Pressure (mbar)", color="b")
+    plt.xlabel("Time (min)")
 
 plot_rga_mass_range([17, 18, 19], rga, time)
+
+plot_temperature_pressure(time, temperature, pressure)
+
 
 plt.show()
 
