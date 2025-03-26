@@ -77,7 +77,7 @@ class CapillaryBakeStandGui:
         self.helium_mode_button = tk.Button(root, textvariable=self.helium_mode_button_text, command=self.handle_helium_mode_buton, font=text_font)
 
         self.UPDATE_PERIOD = 1000 #ms 
-        self.PLOT_UPDATE_PERIOD = 0.25 #seconds 
+        self.PLOT_UPDATE_PERIOD = 250 #ms
         self.time_since_last_plot = 0
         
         self.fig,  self.temperature_axis = plt.subplots(figsize=(screen_width/100, screen_height/100), dpi=100)
