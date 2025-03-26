@@ -151,8 +151,6 @@ class CapillaryBakeStandGui:
         self.pressure_axis.semilogy(time_data, pressure_data, color='blue', label='Pressure (torr)')
 
         self.temperature_axis.set_xlabel("Time (s)")
-        self.temperature_axis.set_ylabel("Temperature (C)", color='red')
-        self.pressure_axis.set_ylabel("Pressure (torr)", color='blue')
 
         self.temperature_axis.legend(loc='upper left')
         self.pressure_axis.legend(loc='upper right')
