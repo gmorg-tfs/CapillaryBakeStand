@@ -342,7 +342,7 @@ class CapillaryBakeStandControllerBase:
             if self.logging_for_plotting_complete_event.is_set() or time.time() - self.last_log_for_plot_time >= self.LOGGING_THREAD_TIMEOUT:
                 threading.Thread(target=self.MeasureTemperaurePressure).start()
 
-            if self.running and self.logging_complete_event.is_set() and self.TimeForNextLog():
+            if (self.running and self.logging_complete_event.is_set() and self.TimeForNextLog()) or (time.time() - self.last_log_time >= self.CONTROL_LOOP_TIMEOUT):
                 threading.Thread(target=self.RGAScanAndSaveData).start()
 
             self.control_loop_completed_event.set()
