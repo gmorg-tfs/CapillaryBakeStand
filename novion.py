@@ -209,18 +209,15 @@ class NovionRGA(NovionBase):
         response = self.serial_port.read(24)
         if not response:
             #print("No response received")
+            self.failed_calls+=1
+            self.reconnect_if_needed()
             return NO_RESPONSE_ERROR
         
+        self.failed_calls = 0
         return self.parse_response(response)
     
-    def data_check(self, data):
-        if data is not None:
-            self.failed_calls = 0
-            return data
-        else:
-            return None
-        
-        if data is None and self.failed_calls >= 2:
+    def reconnect_if_needed(self):
+        if self.failed_calls >= 2:
             try:
                 print("novion lost communication")
                 self.serial_port.close()
@@ -231,20 +228,13 @@ class NovionRGA(NovionBase):
             except Exception as e:
                 print(e)
                 print("novion failed to reconnect")
-            return None
-            
-        elif data is None and self.failed_calls < 2:
-            self.failed_calls+=1
-            print("novion failed to respond correctly")
-
-        return None
 
     def request_pressure(self):
         command = 0x20
         subcommand = 0x08
         data = self.send_command(command, subcommand)
-        if self.data_check(data) is None:
-            return data
+        if data is None:
+            return None
         pressure, = struct.unpack('<f', data[:4])
         return pressure
     
@@ -252,8 +242,8 @@ class NovionRGA(NovionBase):
         command = 0x83
         subcommand = 0x02
         data = self.send_command(command, subcommand)
-        if self.data_check(data) is None:
-            return data
+        if data is None:
+            return None
         sensor, = struct.unpack('<i', data[:4])
         return sensor
 
@@ -261,8 +251,8 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x3f
         data = self.send_command(command, subcommand)
-        if self.data_check(data) is None:
-            return data
+        if data is None:
+            return None
         n, = struct.unpack('<i', data[:4])
         return n
 
@@ -270,8 +260,8 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x3A
         data = self.send_command(command, subcommand)
-        if self.data_check(data) is None:
-            return data
+        if data is None:
+            return None
         ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number = struct.unpack('<hhffI', data) #this is cool
         return ID_spec_intensity, ID_spec_mass_number, intensity, mass_number, tuple_number
 
@@ -298,8 +288,8 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x14
         data = self.send_command(command, subcommand)
-        if self.data_check(data) is None:
-            return data
+        if data is None:
+            return None
         mass_number, = struct.unpack('<f', data[:4])
         return mass_number
 
@@ -307,8 +297,8 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x15
         data = self.send_command(command, subcommand)
-        if self.data_check(data) is None:
-            return data
+        if data is None:
+            return None
         mass_number, = struct.unpack('<f', data[:4])
         return mass_number
 
@@ -334,8 +324,8 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x38
         data = self.send_command(command, subcommand)
-        if self.data_check(data) is None:
-            return data
+        if data is None:
+            return None
         mode, = struct.unpack('<i', data[:4])
         return mode
     
@@ -343,8 +333,8 @@ class NovionRGA(NovionBase):
         command = 0x81
         subcommand = 0x31
         data = self.send_command(command, subcommand)
-        if self.data_check(data) is None:
-            return data
+        if data is None:
+            return None
         helium_value, = struct.unpack('<f', data[:4])
         return helium_value
         

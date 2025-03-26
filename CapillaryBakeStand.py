@@ -256,7 +256,7 @@ class CapillaryBakeStandControllerBase:
         self.time = deque(maxlen=MAX_DATA_POINTS)
         #novion 
         self.novion = NovionMock()
-        self.logging_thread = threading.Thread(target=self.MeasureDataAndSaveToFile)
+        self.logging_thread = threading.Thread(target=self.RGAScanAndSaveData)
         self.logging_complete_event = threading.Event()
         self.logging_complete_event.set()
 
@@ -326,10 +326,10 @@ class CapillaryBakeStandControllerBase:
                         self.Stop()
 
             if self.logging_for_plotting_complete_event.is_set() or time.time() - self.last_log_for_plot_time >= self.LOGGING_THREAD_TIMEOUT:
-                threading.Thread(target=self.LogDataForPlotting).start()
+                threading.Thread(target=self.MeasureTemperaurePressure).start()
 
             if self.running and self.logging_complete_event.is_set() and self.TimeForNextLog():
-                threading.Thread(target=self.MeasureDataAndSaveToFile).start()
+                threading.Thread(target=self.RGAScanAndSaveData).start()
 
             self.control_loop_completed_event.set()
         except Exception as e:
@@ -338,39 +338,43 @@ class CapillaryBakeStandControllerBase:
             self.control_loop_completed_event.set()
 
 
-    def MeasureDataAndSaveToFile(self):
+    def RGAScanAndSaveData(self):
         #pressure_novion = self.MeasurePressure()
         self.logging_complete_event.clear()
-        #if pressure_novion is None:
-        #    self.logging_complete_event.set()
-        #    return
-        #temperature_voltage_raw, temperature = self.MeasureTemperature()
-        temperature = 0
-        pressure = 0
-        with self.data_lock:
-            temperature = self.last_temperature
-            pressure = self.last_pressure
-        
-        if self.novion.mode == RGA_MODE and self.novion.can_scan():
-            rga_scan = self.novion.scan()
-            self.logger.log(f"{time.time()},{pressure},{temperature},{rga_scan}")
-            self.last_log_time = time.time()
-        
+        try:
+            #if pressure_novion is None:
+            #    self.logging_complete_event.set()
+            #    return
+            #temperature_voltage_raw, temperature = self.MeasureTemperature()
+            temperature = 0
+            pressure = 0
+            with self.data_lock:
+                temperature = self.last_temperature
+                pressure = self.last_pressure
+            
+            if self.novion.mode == RGA_MODE and self.novion.can_scan():
+                rga_scan = self.novion.scan()
+                self.logger.log(f"{time.time()},{pressure},{temperature},{rga_scan}")
+                self.last_log_time = time.time()
+        except Exception as e:
+            print(f"Error scanning and saving data: {e}")
         #self.last_pressure = pressure_novion
         #self.last_temperature = temperature
         self.logging_complete_event.set()
 
-    def LogDataForPlotting(self):
+    def MeasureTemperaurePressure(self):
         self.logging_for_plotting_complete_event.clear()
-        temperature_voltage_raw, temperature = self.MeasureTemperature()
+        temperature = self.MeasureTemperature()
+
         if temperature is None:
             self.last_log_for_plot_time = time.time()
             return self.logging_for_plotting_complete_event.set()
-        #pressure_voltage_raw, pressure = self.MeasurePressure() guage has randomly shut off so we pretend it doesnt exist
+        
         pressure_novion = self.MeasurePressure()
         if pressure_novion is None:
             self.last_log_for_plot_time = time.time()
             return self.logging_for_plotting_complete_event.set()
+        
         with self.data_lock:
             self.temperature_data.append(temperature)
             self.pressure_data.append(pressure_novion)
@@ -420,20 +424,20 @@ class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
     def MeasureTemperature(self):
         self.RandomInstrumentResponseTime()
         if len(self.temperature_data) == 0:
-            return 1.26, 25
+            return 25
         delta = random.random()
 
         if self.heater_on and not self.cooler_on:
-            return 1.26, self.temperature_data[-1] + delta
+            return self.temperature_data[-1] + delta
         elif self.cooler_on and not self.heater_on:
-            return 1.26, self.temperature_data[-1]  - delta
+            return self.temperature_data[-1]  - delta
         elif self.heater_on and self.cooler_on:
-            return 1.26, self.temperature_data[-1] + (delta / 2)
+            return self.temperature_data[-1] + (delta / 2)
         else:
             if self.temperature_data[-1] > 25:
-                return 1.26, self.temperature_data[-1] - (delta / 4)
+                return self.temperature_data[-1] - (delta / 4)
             else:
-                return 1.26, self.temperature_data[-1]
+                return self.temperature_data[-1]
                         
     def MeasurePressure(self):
         self.RandomInstrumentResponseTime()
