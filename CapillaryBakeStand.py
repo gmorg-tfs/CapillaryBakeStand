@@ -109,6 +109,7 @@ class CapillaryBakeStandGui:
         self.helium_readback_label.grid(row=1, column=5, padx=2, pady=1)
 
         self.update()
+        self.update_plot()
 
     def handle_helium_mode_buton(self):
         if self.test_stand_controller.novion.mode == RGA_MODE:
@@ -120,27 +121,44 @@ class CapillaryBakeStandGui:
         else:
             self.helium_mode_button_text.set("Unknown")
 
+
     def update_plot(self):
-        threading.Thread(target=self._update_plot).start()
+        """Update the plot periodically without creating new threads."""
+        try:
+            self._update_plot()
+        except Exception as e:
+            print(f"Error updating plot: {e}")
+
+        # Schedule the next update
+        self.root.after(self.PLOT_UPDATE_PERIOD, self.update_plot)
 
     def _update_plot(self):
+        """Perform the actual plot update logic."""
         if len(self.test_stand_controller.time) == 0:
             return
-        try:
-            self.temperature_axis.cla()
-            self.pressure_axis.cla()
-            time, temperature, pressure = self.test_stand_controller.TimeTemperaturePressure()
-            if len(time) < 2:
-                #print("Insufficient data for plotting.")
-                return
-            self.temperature_axis.plot(time, temperature, color='red')
-            self.pressure_axis.semilogy(time, pressure)
-            x_axis = [time[0], time[(len(time)-1)//2], time[-1]] if len(time) > 2 else time
-            self.pressure_axis.set_xticks(x_axis)
-            self.canvas.draw()
-            self.canvas.flush_events()
-        except Exception as e:
-            print(f"erroe updating plot: {e}")
+
+        # Acquire data for plotting
+        with self.test_stand_controller.data_lock:
+            time_data = np.array(self.test_stand_controller.time)
+            temperature_data = np.array(self.test_stand_controller.temperature_data)
+            pressure_data = np.array(self.test_stand_controller.pressure_data)
+
+        # Clear and redraw the plot
+        self.temperature_axis.clear()
+        self.pressure_axis.clear()
+
+        self.temperature_axis.plot(time_data, temperature_data, color='red', label='Temperature (C)')
+        self.pressure_axis.semilogy(time_data, pressure_data, color='blue', label='Pressure (torr)')
+
+        self.temperature_axis.set_xlabel("Time (s)")
+        self.temperature_axis.set_ylabel("Temperature (C)", color='red')
+        self.pressure_axis.set_ylabel("Pressure (torr)", color='blue')
+
+        self.temperature_axis.legend(loc='upper left')
+        self.pressure_axis.legend(loc='upper right')
+
+        # Redraw the canvas
+        self.canvas.draw()
 
     def manual_fan_control(self):
         if self.test_stand_controller.manual_override:
@@ -222,10 +240,6 @@ class CapillaryBakeStandGui:
                 self.time.set(f"Time Left In State: {minutes}:{seconds}")
             else:
                 self.time.set(f"Time Left In State: ∞")
-            
-            if time.time() - self.time_since_last_plot >= self.PLOT_UPDATE_PERIOD:
-                self.time_since_last_plot = time.time()
-                self.update_plot()
 
             self.root.after(self.UPDATE_PERIOD, self.update)
         except Exception as e:
