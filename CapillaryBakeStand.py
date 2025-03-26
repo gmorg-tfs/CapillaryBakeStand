@@ -469,21 +469,48 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
         self.COOLER_CHANNEL = 1
         self.HEATER_VOLTAGE = 5 #volts
         self.COOLER_VOLTAGE = 5 #volts
+   
+
+    def Reconnect(self):
+        try:
+            self.device.close()
+            self.device = u3.U3()
+            return True
+        except Exception as e:
+            return False
+        
+
+    def SetVoltageOnDac(self, channel, voltage):
+        try:
+            eDAC(self.device.handle, channel, voltage)
+            return True
+        except Exception as e:
+            return self.Reconnect()
+
+
+    def ReadVoltage(self, channel):
+        try:
+            return eAIN(self.device.handle, channel)
+        except Exception as e:
+            self.Reconnect()
+            return None
 
 
     def MeasureTemperature(self):
+        voltage_raw = self.ReadVoltage(self.device, self.THERMOCOUPLE_CHANNEL)
+        if voltage_raw is None:
+            return None
+        voltage = (voltage_raw - self.THERMOCOUPLE_VOLTAGE_OFFSET) / self.THERMOCOUPLE_VOLTAGE_GAIN
         try:
-            voltage_raw = eAIN(self.device.handle, self.THERMOCOUPLE_CHANNEL)
-            voltage = (voltage_raw - self.THERMOCOUPLE_VOLTAGE_OFFSET) / self.THERMOCOUPLE_VOLTAGE_GAIN
             internal_temp = self.device.getTemperature()
-            temperature = TCVoltsToTemp(LJ_ttK, voltage, internal_temp)         #K
-            #t = (1.8 * t) - 459.67                                             #F
-            temperature -= 278.00                                               #K
-            return voltage_raw, temperature
         except Exception as e:
+            self.device.close()
             self.device = u3.U3()
-            return None, None
-    
+            return None
+        temperature = TCVoltsToTemp(LJ_ttK, voltage, internal_temp)         #K
+        #t = (1.8 * t) - 459.67                                             #F
+        temperature -= 278.00                                               #K
+        return temperature
 
     def MeasurePressure(self):
         p = self.novion.request_pressure()
@@ -492,12 +519,12 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
         else:
             return p
 
-    def SetVoltageOnDac(self, channel, voltage):
-        eDAC(self.device.handle, channel, voltage)
-
     def TurnFanOn(self):
         self.cooler_on = True
-        self.SetVoltageOnDac(self.COOLER_CHANNEL, self.COOLER_VOLTAGE)
+        if self.SetVoltageOnDac(self.COOLER_CHANNEL, self.COOLER_VOLTAGE):
+            return
+        else:
+
 
     def TurnFanOff(self):
         self.cooler_on = False

@@ -41,3 +41,9 @@ class Logger:
                 self.log(data)
             else:
                 self.buffer += [data]
+
+
+class ErrorLogger(Logger):
+    def __init__(self, _base_path, _file_name_base, _file_extension):
+        super().__init__(_base_path, _file_name_base, _file_extension, "")
+    
