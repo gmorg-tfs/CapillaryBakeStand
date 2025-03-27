@@ -211,7 +211,7 @@ class NovionRGA(NovionBase):
             #print("No response received")
             self.failed_calls+=1
             self.reconnect_if_needed()
-            return NO_RESPONSE_ERROR
+            return None
         
         self.failed_calls = 0
         return self.parse_response(response)
