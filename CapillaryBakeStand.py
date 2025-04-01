@@ -8,249 +8,19 @@ from novion import *
 from collections import deque
 from datetime import date
 import traceback
+from threading import Thread
 
 MAX_DATA_POINTS = 2048
-
-class CapillaryBakeStandGui:
-    def __init__(self, root):
-        
-        self.root = root
-        self.root.title("Capillary Bake Stand")
-        screen_width = root.winfo_screenwidth()
-        screen_height = root.winfo_screenheight() - 30
-        self.test_stand_controller = CapillaryBakeStandController()
-        #self.test_stand_controller = CapillaryBakeStandControllerSimulator()
-
-        text_font = ("Helvetica", 14)
-        self.state = tk.StringVar()
-        self.state_label = tk.Label(root, textvariable=self.state, font=text_font)
-
-        self.time = tk.StringVar()
-        self.time.set(f"Time Left In State: ∞")
-        self.time_label = tk.Label(root, textvariable=self.time, font=text_font)
-
-        self.cycles = tk.StringVar()
-        self.cycles.set(f"Cycles Completed: {self.test_stand_controller.cycle_count}")
-        self.cycles_label = tk.Label(root, textvariable=self.cycles, font=text_font)
-
-        self.water_percentage_text = tk.StringVar()
-        self.water_percentage_text.set(f"Water Percentage: {self.test_stand_controller.novion.get_water_content()*100:.2f}%")
-        self.water_percentage_label = tk.Label(root, textvariable=self.water_percentage_text, font=text_font)
-
-        self.start_stop_button_text = tk.StringVar()
-        self.start_stop_button_text.set("Start")
-        self.start_stop_button = tk.Button(root, textvariable=self.start_stop_button_text, command=self.StartStop, font=text_font)
-
-        self.manual_override_value = tk.BooleanVar()
-        self.manual_override_value.set(False)
-        self.manual_override_checkbox = tk.Checkbutton(root, command=self.toggle_manual_mode ,text="Manual Override", variable=tk.IntVar(), font=text_font)
+def main():
+    controller = CapillaryBakeStandControllerSimulator()
+    controller.Start()
 
 
-        self.manual_fan_button_text = tk.StringVar()
-        self.manual_fan_button_text.set("Fan On")
-        self.manual_fan_control_button = tk.Button(root, textvariable=self.manual_fan_button_text, command=self.manual_fan_control, font=text_font)
-
-        self.manual_heater_button_text = tk.StringVar()
-        self.manual_heater_button_text.set("Heater On")
-        self.manual_heater_control_button = tk.Button(root, textvariable=self.manual_heater_button_text, command=self.manual_heater_control, font=text_font)
-
-
-        self.temperature_readback = tk.StringVar()
-        self.temperature_readback.set(f"Temperature: n/a")
-        self.temperature_readback_label = tk.Label(root, textvariable=self.temperature_readback, font=text_font)
-
-        self.pressure_readback = tk.StringVar()
-        self.pressure_readback.set(f"Pressure: n/a")
-        self.pressure_readback_label = tk.Label(root, textvariable=self.pressure_readback, font=text_font)
-
-        self.helium_readback = tk.StringVar()
-        self.helium_readback.set(f"Helium: n/a")
-        self.helium_readback_label = tk.Label(root, textvariable=self.helium_readback, font=text_font)
-
-        self.helium_mode_button_text = tk.StringVar()
-        if self.test_stand_controller.novion.mode == RGA_MODE:
-            self.helium_mode_button_text.set("Helium: False")
-        elif self.test_stand_controller.novion.mode == HELIUM_MODE:
-            self.helium_mode_button_text.set("Helium: True")
-        else:
-            self.helium_mode_button_text.set("Helium: n/a")
-        self.helium_mode_button = tk.Button(root, textvariable=self.helium_mode_button_text, command=self.handle_helium_mode_buton, font=text_font)
-
-        self.UPDATE_PERIOD = 1000 #ms 
-        self.PLOT_UPDATE_PERIOD = 250 #ms
-        self.time_since_last_plot = 0
-        
-        self.fig,  self.temperature_axis = plt.subplots(figsize=(screen_width/100, screen_height/100), dpi=100)
-        self.pressure_axis = self.temperature_axis.twinx()
-        plt.subplots_adjust(top=1, bottom=0.15, left=0.1, right=0.9)
-
-        self.temperature_axis.plot(np.array(self.test_stand_controller.time),np.array(self.test_stand_controller.temperature_data), color='red')
-        self.pressure_axis.semilogy(np.array(self.test_stand_controller.time), np.array(self.test_stand_controller.pressure_data))
-
-        self.canvas = FigureCanvasTkAgg(self.fig, master=root)
-
-        self.canvas.get_tk_widget().grid(row=3, column=0, padx=2, pady=2, columnspan=6)
-
-
-        root.protocol('WM_DELETE_WINDOW', self.exit)
-
-        self.temperature_readback_label.grid(row=0, column=0)
-        self.pressure_readback_label.grid(row=0, column=1)
-        self.time_label.grid(row=0, column=2, padx=2, pady=1)
-        self.state_label.grid(row=0, column=3, padx=2, pady=1)
-        self.cycles_label.grid(row=0, column=4, padx=2, pady=1)
-        self.helium_mode_button.grid(row=0, column=5, padx=2, pady=1)
-
-        self.start_stop_button.grid(row=1, column=0, padx=2, pady=1)
-        self.manual_override_checkbox.grid(row=1, column=1, padx=2, pady=1)
-        self.manual_heater_control_button.grid(row=1, column=2, padx=2, pady=1)
-        self.manual_fan_control_button.grid(row=1, column=3, padx=2, pady=1)
-        self.water_percentage_label.grid(row=1, column=4, padx=2, pady=1)
-        self.helium_readback_label.grid(row=1, column=5, padx=2, pady=1)
-
-        self.update()
-        self.update_plot()
-
-    def handle_helium_mode_buton(self):
-        if self.test_stand_controller.novion.mode == RGA_MODE:
-            self.test_stand_controller.novion.change_to_he_leak_detector()
-            self.helium_mode_button_text.set("Helium: True")
-        elif self.test_stand_controller.novion.mode == HELIUM_MODE:
-            self.test_stand_controller.novion.change_to_rga()
-            self.helium_mode_button_text.set("Helium: False")
-        else:
-            self.helium_mode_button_text.set("Unknown")
-
-
-    def update_plot(self):
-        """Update the plot periodically without creating new threads."""
-        try:
-            self._update_plot()
-        except Exception as e:
-            print(f"Error updating plot: {e}")
-
-        # Schedule the next update
-        self.root.after(self.PLOT_UPDATE_PERIOD, self.update_plot)
-
-    def _update_plot(self):
-        """Perform the actual plot update logic."""
-        if len(self.test_stand_controller.time) == 0:
-            return
-
-        # Acquire data for plotting
-        with self.test_stand_controller.data_lock:
-            time_data = np.array(self.test_stand_controller.time)
-            temperature_data = np.array(self.test_stand_controller.temperature_data)
-            pressure_data = np.array(self.test_stand_controller.pressure_data)
-
-        # Clear and redraw the plot
-        self.temperature_axis.clear()
-        self.pressure_axis.clear()
-
-        self.temperature_axis.plot(time_data, temperature_data, color='red', label='Temperature (C)')
-        self.pressure_axis.semilogy(time_data, pressure_data, color='blue', label='Pressure (torr)')
-        x_axis = [time[0], time[(len(time)-1)//2], time[-1]] if len(time) > 2 else time
-        self.pressure_axis.set_xticks(x_axis)
-
-        self.temperature_axis.set_xlabel("Time (s)")
-
-        self.temperature_axis.legend(loc='upper left')
-        self.pressure_axis.legend(loc='upper right')
-
-        # Redraw the canvas
-        self.canvas.draw()
-
-    def manual_fan_control(self):
-        if self.test_stand_controller.manual_override:
-            if self.test_stand_controller.cooler_on:
-                self.test_stand_controller.TurnFanOff()
-            else:
-                self.test_stand_controller.TurnFanOn()
-
-    def manual_heater_control(self):
-        if self.test_stand_controller.manual_override:
-            if self.test_stand_controller.heater_on:
-                self.test_stand_controller.TurnHeaterOff()
-            else:
-                self.test_stand_controller.TurnHeaterOn()
-    
-    def toggle_manual_mode(self):
-        if self.test_stand_controller.manual_override:
-            self.test_stand_controller.manual_override = False
-        else:
-            self.time.set(f"Time Left In State: ∞")
-            self.test_stand_controller.manual_override = True
-
-    def exit(self):
-        self.test_stand_controller.Stop()
-        quit()
-
-    def StartStop(self):
-        if self.test_stand_controller.running:
-            self.test_stand_controller.Stop()
-            self.start_stop_button_text.set("Start")
-        else:
-            self.test_stand_controller.Start()
-            self.start_stop_button_text.set("Stop")
-
-    def current_state_as_string(self):
-        if not self.test_stand_controller.manual_override:
-            if self.test_stand_controller.current_state == self.test_stand_controller.states["heating"]:
-                return "Heating"
-            elif self.test_stand_controller.current_state == self.test_stand_controller.states["cooling"]:
-                return "Cooling"
-            else:
-                return "Idle"
-        else:
-            return "Manual Override"
-    
-    def update(self):
-        try:
-            if self.test_stand_controller.control_loop_completed_event.is_set() or time.time() - self.test_stand_controller.last_control_loop_time >= self.test_stand_controller.CONTROL_LOOP_TIMEOUT:
-                threading.Thread(target=self.test_stand_controller.ControlLoop).start()
-
-            self.cycles.set(f"Cycles Completed: {self.test_stand_controller.cycle_count}/{self.test_stand_controller.number_of_cycles_to_run}")
-            self.state.set(f"State: {self.current_state_as_string()}")
-            self.manual_heater_button_text.set(f"Heater On: {self.test_stand_controller.heater_on}")
-            self.manual_fan_button_text.set(f"Cooler On: {self.test_stand_controller.cooler_on}")
-            self.water_percentage_text.set(f"Water Percentage: {(self.test_stand_controller.novion.get_water_content()*100):.2f}%")
-            if self.test_stand_controller.novion.mode == HELIUM_MODE:
-                helium_value = self.test_stand_controller.novion.get_he_value()
-                if helium_value is not None:
-                    self.helium_readback.set(f"Helium: {helium_value:.2e}")
-
-            if len(self.test_stand_controller.temperature_data) > 0:
-                self.temperature_readback.set(f"Temperature: {self.test_stand_controller.last_temperature:.2f}")
-                self.pressure_readback.set(f"Pressure: {self.test_stand_controller.last_pressure:.2e}")
-
-            if not self.test_stand_controller.manual_override:
-                total_remaining_time_s = 0
-                minutes = 0
-                seconds = 0
-                if self.test_stand_controller.current_state == self.test_stand_controller.states["heating"]:
-                    total_remaining_time_s = self.test_stand_controller.HEATING_TIME - (time.time() - self.test_stand_controller.start_time)
-                    self.state_label.config(foreground="red")
-                elif self.test_stand_controller.current_state == self.test_stand_controller.states["cooling"]:
-                    total_remaining_time_s = self.test_stand_controller.COOLING_TIME - (time.time() - self.test_stand_controller.start_time)
-                    self.state_label.config(foreground="blue")
-                minutes = int(total_remaining_time_s // 60)
-                seconds = int(total_remaining_time_s % 60)
-                if seconds < 10:
-                    seconds = f"0{seconds}"
-                self.time.set(f"Time Left In State: {minutes}:{seconds}")
-            else:
-                self.time.set(f"Time Left In State: ∞")
-
-            self.root.after(self.UPDATE_PERIOD, self.update)
-        except Exception as e:
-            print(e)
-            self.root.after(self.UPDATE_PERIOD, self.update)
-
-
-class CapillaryBakeStandControllerBase:
+class CapillaryBakeStandControllerBase(Thread):
     def __init__(self):
         #state
         self.running = False
+        self.thread_running = True
         self.cycle_count = 0
         self.number_of_cycles_to_run = 24 * 7
         self.start_time = 0
@@ -298,17 +68,20 @@ class CapillaryBakeStandControllerBase:
 
     def Stop(self):
         self.running = False
+        self.thread_running = False
         self.current_state = 0
         self.TurnOffHeaterAndCooler()
 
     def Start(self):
         self.cycle_count = 0
         self.running = True
+        self.thread_running = True
         self.Go()
+        self.run()
     
     def Go(self):
         self.StartHeating()
-        self.ControlLoop()
+        #self.ControlLoop()
 
     def StartHeating(self):
         self.current_state = self.states["heating"]
@@ -424,6 +197,38 @@ class CapillaryBakeStandControllerBase:
         self.heater_on = True
     def TurnHeaterOff(self):
         self.heater_on = False
+    
+    def run(self):
+        while self.thread_running:
+            try:
+                if self.current_state == self.states["heating"] and time.time() - self.start_time >= self.HEATING_TIME:
+                    self.StartCooling()
+                elif self.current_state == self.states["cooling"] and time.time() - self.start_time >= self.COOLING_TIME:
+                    self.cycle_count += 1
+                    if self.cycle_count < self.number_of_cycles_to_run:
+                        self.StartHeating()
+                    else:
+                        self.Stop()
+                self.MeasureTemperaurePressure()
+                self.RGAScanAndSaveData()
+                time_elapsed = time.time() - self.start_time
+                time_remaining = 0
+                if self.current_state == self.states["heating"]:
+                    time_remaining = self.HEATING_TIME - time_elapsed
+                elif self.current_state == self.states["cooling"]:
+                    time_remaining = self.COOLING_TIME - time_elapsed
+                minutes = int(time_remaining // 60)
+                seconds = int(time_remaining % 60)
+                if seconds < 10:
+                    seconds = f"0{seconds}"
+                state = "Heating" if self.current_state == self.states["heating"] else "Cooling"
+                print(f"Cycle: {self.cycle_count}/{self.number_of_cycles_to_run}, State: {state}, Time remaining: {minutes}:{seconds}, Temperature: {self.last_temperature:.2f}C, Pressure: {self.last_pressure:.2e}torr",end="\r")
+
+            except Exception as e:
+                print(f"Error in control loop: {e}")
+            time.sleep(0.1)
+
+
 
 class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
     def __init__(self):
@@ -556,6 +361,8 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
 
 
 if __name__ == "__main__":
+    main()
+    """
     try:
         root = tk.Tk()
         gui = CapillaryBakeStandGui(root)
@@ -563,5 +370,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"unhandeled exception: {e}")
         traceback.print_exc()
-        
+    """ 
     
