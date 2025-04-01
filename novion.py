@@ -190,10 +190,12 @@ class NovionRGA(NovionBase):
             return None
         header = response[1]
         if header & NAK_MASK == 0:
+            print(f"{time.time()}: NAK")
             return None
         crc_received = response[22] | (response[23] << 8)
         crc_calculated = self.calc_crc(response[:22])
         if crc_received != crc_calculated:
+            print(f"{time.time()}: CRC error")
             return None
         payload = response[6:22]
         return payload
@@ -201,33 +203,41 @@ class NovionRGA(NovionBase):
     def send_command(self, command, subcommand, payload=struct.pack('<B', 0x00)):
         #print(f"Command: {command}, Subcommand: {subcommand}, Payload: {payload.hex()}")
         frame = self.build_frame(command, subcommand, payload)
-        self.serial_port.write(frame)
-        start = time.time()
-        while self.serial_port.in_waiting != 24 and time.time() - start < TIMEOUT_SECONDS:
-            time.sleep(0.01)
+        try:
+            self.serial_port.write(frame)
+            start = time.time()
+            while self.serial_port.in_waiting != 24 and time.time() - start < TIMEOUT_SECONDS:
+                time.sleep(0.01)
 
-        response = self.serial_port.read(24)
-        if not response:
-            #print("No response received")
+            response = self.serial_port.read(24)
+            if not response:
+                print(f"{time.localtime()}: send_command: No response received")
+                self.failed_calls+=1
+                self.reconnect_if_needed()
+                return None
+            
+            self.failed_calls = 0
+            return self.parse_response(response)
+        except Exception as e:
+            print(f"{time.localtime()}: Error sending command: {command}{subcommand}{e}")
             self.failed_calls+=1
             self.reconnect_if_needed()
             return None
-        
-        self.failed_calls = 0
-        return self.parse_response(response)
     
     def reconnect_if_needed(self):
         if self.failed_calls >= 2:
             try:
-                print("novion lost communication")
+                print(f"{time.localtime()}: novion lost communication")
                 self.serial_port.close()
                 time.sleep(1)
                 self.serial_port = serial.Serial(self.com, self.baud)
                 self.failed_calls = 0
-                print("novion reconnected?")
+                print(f"{time.localtime()}: novion reconnected?")
+                self.mode = self.get_mode()
+                print(f"{time.localtime()}: novion mode: {self.mode}")
             except Exception as e:
                 print(e)
-                print("novion failed to reconnect")
+                print(f"{time.localtime()}: novion failed to reconnect")
 
     def request_pressure(self):
         command = 0x20
@@ -321,13 +331,18 @@ class NovionRGA(NovionBase):
         self.mode = self.get_mode()
 
     def get_mode(self):
-        command = 0x81
-        subcommand = 0x38
-        data = self.send_command(command, subcommand)
-        if data is None:
+        try:
+            command = 0x81
+            subcommand = 0x38
+            data = self.send_command(command, subcommand)
+            if data is None:
+                print("get mode: None")
+                return None
+            mode, = struct.unpack('<i', data[:4])
+            return mode
+        except Exception as e:
+            print(f"Error getting mode: {e}")
             return None
-        mode, = struct.unpack('<i', data[:4])
-        return mode
     
     def get_he_value(self):
         command = 0x81

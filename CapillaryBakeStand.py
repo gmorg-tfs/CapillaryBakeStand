@@ -7,7 +7,7 @@ import threading
 from novion import *
 from collections import deque
 from datetime import date
-
+import traceback
 
 MAX_DATA_POINTS = 2048
 
@@ -556,7 +556,12 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
 
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    gui = CapillaryBakeStandGui(root)
-    gui.root.mainloop()
+    try:
+        root = tk.Tk()
+        gui = CapillaryBakeStandGui(root)
+        gui.root.mainloop()
+    except Exception as e:
+        print(f"unhandeled exception: {e}")
+        traceback.print_exc()
+        
     

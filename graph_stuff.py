@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import glob
 
 #file_path = "C:\\data\\toaster\\toaster_data_24.csv"
+file_path = "C:\\Data\\toaster\\2025_03_24_toaster_data_2.csv"
 
 def get_most_recent_data_file(base_path):
     files = glob.glob(base_path + "2*.csv") #good for the next ~1000 years
@@ -19,7 +20,7 @@ def load_data_from_file(path):
     return time, pressure, temperature, masses, rga
 
 
-file_path = get_most_recent_data_file("C:\\data\\toaster\\")
+#file_path = get_most_recent_data_file("C:\\data\\toaster\\")
 time, pressure, temperature, masses, rga = load_data_from_file(file_path)
 time = (time - time[0])/60
 
