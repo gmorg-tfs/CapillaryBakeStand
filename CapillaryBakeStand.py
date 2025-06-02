@@ -9,11 +9,16 @@ from collections import deque
 from datetime import date
 import traceback
 from threading import Thread
+import sys
 
 MAX_DATA_POINTS = 2048
 def main():
-    controller = CapillaryBakeStandControllerSimulator()
-    controller.Start()
+    #controller = CapillaryBakeStandControllerSimulator()
+    controller = CapillaryBakeStandController()
+
+    #switch which line is commented out for quick turn off oven turn on fan
+    controller.Start()    
+    #controller.StartCooling()
 
 
 class CapillaryBakeStandControllerBase(Thread):
@@ -144,7 +149,7 @@ class CapillaryBakeStandControllerBase(Thread):
                 self.logger.log(f"{time.time()},{pressure},{temperature},{rga_scan}")
                 self.last_log_time = time.time()
         except Exception as e:
-            print(f"Error scanning and saving data: {e}")
+            print(f"\nError scanning and saving data: {e}")
         #self.last_pressure = pressure_novion
         #self.last_temperature = temperature
         self.logging_complete_event.set()
@@ -222,10 +227,16 @@ class CapillaryBakeStandControllerBase(Thread):
                 if seconds < 10:
                     seconds = f"0{seconds}"
                 state = "Heating" if self.current_state == self.states["heating"] else "Cooling"
-                print(f"Cycle: {self.cycle_count}/{self.number_of_cycles_to_run}, State: {state}, Time remaining: {minutes}:{seconds}, Temperature: {self.last_temperature:.2f}C, Pressure: {self.last_pressure:.2e}torr",end="\r")
+                status_msg = (f"Cycle: {self.cycle_count}/{self.number_of_cycles_to_run}, "
+                                f"State: {state}, Time remaining: {minutes}:{seconds}, "
+                                f"Temperature: {self.last_temperature:.2f}C, "
+                                f"Pressure: {self.last_pressure:.2e}torr")
+                sys.stdout.write(f"\r{status_msg}   ")
+                sys.stdout.flush()
+                #print(f"Cycle: {self.cycle_count}/{self.number_of_cycles_to_run}, State: {state}, Time remaining: {minutes}:{seconds}, Temperature: {self.last_temperature:.2f}C, Pressure: {self.last_pressure:.2e}torr",end="\r")
 
             except Exception as e:
-                print(f"Error in control loop: {e}")
+                print(f"\nError in control loop: {e}")
             time.sleep(0.1)
 
 

@@ -24,14 +24,15 @@ file_path = get_most_recent_data_file("C:\\data\\toaster\\")
 time, pressure, temperature, masses, rga = load_data_from_file(file_path)
 time = (time - time[0])/60
 
+
 def plot_rga_mass_range(masses, rga, time):
     data = np.zeros(len(rga))
     for m in masses:
         for i in range(len(data)-1):
             data[i] += rga[i, m-1]
     plt.plot(time, data, ".")
-    plt.xlabel("Time (min)")
-    plt.ylabel("% water")
+
+    
 
 
 def plot_temperature_pressure(time, temperature, pressure):
@@ -43,8 +44,14 @@ def plot_temperature_pressure(time, temperature, pressure):
     ax2.set_ylabel("Pressure (mbar)", color="b")
     plt.xlabel("Time (min)")
 
+plot_rga_mass_range([3,4,5], rga, time)
 plot_rga_mass_range([17, 18, 19], rga, time)
-
+plot_rga_mass_range([27, 28, 29], rga, time)
+plot_rga_mass_range([31,32,33], rga, time)
+plot_rga_mass_range([43,44,45], rga, time)
+plt.legend(["He", "H2O", "N2", "O2", "CO2"])
+plt.xlabel("Time (min)")
+plt.ylabel("%")
 plot_temperature_pressure(time, temperature, pressure)
 
 
