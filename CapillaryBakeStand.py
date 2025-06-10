@@ -10,7 +10,7 @@ from datetime import date
 import traceback
 from threading import Thread
 import sys
-#from turbo import PfeifferTurboPump
+from turbo import PfeifferTurboPump, PfeifferTurboPumpSim
 
 MAX_DATA_POINTS = 2048
 def main():
@@ -28,36 +28,87 @@ class CapillaryBakeStandGui(tk.Tk):
         super().__init__()
         self.controller = _controller
         self.title("Capillary Bake Stand Controller")
-        self.geometry("1200x75")
-        self.status = tk.StringVar(value="Idle")
-        self.status_label = tk.Label(self, textvariable=self.status, font=("Arial", 16))
-        self.status_label.pack(expand=True) 
+
         self.start_button = tk.Button(self, text="Start", command=self.start_btn_clicked, font=("Arial", 14))
-        self.start_button.pack()
-        self.controller_thread = None
+
+        self.turbo_start_button = tk.Button(self, text="Start Turbo", command=self.controller.check_turbo, font=("Arial", 14))
+        self.turbo_stop_button = tk.Button(self, text="Stop Turbo", command=self.controller.turbo.stop_pump, font=("Arial", 14))
+
+        self.cycle_status = tk.StringVar(value="Cycle: 0/0")
+        self.cycle_label = tk.Label(self, textvariable=self.cycle_status, font=("Arial", 14))
+
+        self.state_status = tk.StringVar(value="State: Idle")
+        self.state_label = tk.Label(self, textvariable=self.state_status, font=("Arial", 14))
+
+        self.time_remaining_status = tk.StringVar(value="Time Remaining: 00:00")
+        self.time_remaining_label = tk.Label(self, textvariable=self.time_remaining_status, font=("Arial", 14))
+
+        self.temperature_status = tk.StringVar(value="Temperature: 0.00C")
+        self.temperature_label = tk.Label(self, textvariable=self.temperature_status, font=("Arial", 14))
+
+        self.pressure_status = tk.StringVar(value="Pressure: 0.00e-6 torr")
+        self.pressure_label = tk.Label(self, textvariable=self.pressure_status, font=("Arial", 14))
+
+        self.turbo_speed_status = tk.StringVar(value="Turbo Speed: 0 RPM")
+        self.turbo_speed_label = tk.Label(self, textvariable=self.turbo_speed_status, font=("Arial", 14))
+
+        self.turbo_temperature_status = tk.StringVar(value="Turbo Temperature: 0.00C")
+        self.turbo_temperature_label = tk.Label(self, textvariable=self.turbo_temperature_status, font=("Arial", 14))
+
+        self.turbo_power_status = tk.StringVar(value="Turbo Power: 0.00 W")
+        self.turbo_power_label = tk.Label(self, textvariable=self.turbo_power_status, font=("Arial", 14))
+
+        self.cycle_label.grid(row=0, column=0, padx=10, pady=10)
+        self.state_label.grid(row=1, column=0, padx=10, pady=10)
+        self.time_remaining_label.grid(row=2, column=0, padx=10, pady=10)
+        self.temperature_label.grid(row=3, column=0, padx=10, pady=10)
+        self.pressure_label.grid(row=4, column=0, padx=10, pady=10)
+        self.turbo_speed_label.grid(row=5, column=0, padx=10, pady=10)
+        self.turbo_temperature_label.grid(row=6, column=0, padx=10, pady=10)
+        self.turbo_power_label.grid(row=7, column=0, padx=10, pady=10)
+
+        self.start_button.grid(row=0, column=1, padx=10, pady=10)
+        self.turbo_start_button.grid(row=1, column=1, padx=10, pady=10)
+        self.turbo_stop_button.grid(row=2, column=1, padx=10, pady=10)
+
+        self.controller_thread = threading.Thread(target=self.controller.run, daemon=True)
+        self.controller_thread.start()
+
     
     def start_btn_clicked(self):
         if self.start_button.cget("text") == "Start":
-            self.controller_thread = threading.Thread(target=self.controller.Start, daemon=True)
-            self.update_status("Starting...")
-            self.controller_thread.start()
+            #self.controller_thread = threading.Thread(target=self.controller.Start, daemon=True)
+            self.state_status.set("Starting...")
+            #self.controller_thread.start()
+            self.controller.Go()
             self.start_button.config(text="Stop")
         else:
-            self.update_status("Stopped")
-            self.controller.Stop()
+            self.state_status.set("Stopping...")
+            #self.controller.Stop()
             self.start_button.config(text="Start")
+        
+    def update(self, status_dict): 
+        self.cycle_status.set(f"Cycle: {status_dict['cycle']}")
+        self.state_status.set(f"State: {status_dict["state"]}")
+        self.time_remaining_status.set(f"Time left: {status_dict["time_remaining"]}")
+        self.temperature_status.set(f"Temperature: {status_dict["temperature"]}")
+        self.pressure_status.set(f"Pressure: {status_dict["pressure"]}")
+        self.turbo_speed_status.set(f"Turbo Speed: {status_dict['turbo_speed']} RPM")
+        self.turbo_temperature_status.set(f"Turbo Temperature: {status_dict['turbo_temperature']} C")
+        self.turbo_power_status.set(f"Turbo Power: {status_dict['turbo_power']} W")
 
     def update_status(self, message):
-        self.after(0, self.status.set, message)
+        #self.after(0, self.status.set, message)
+        self.after(0, self.update, message)
 
 
 
 class CapillaryBakeStandControllerBase(Thread):
-    def __init__(self, _gui=None, _turbo=None):
+    def __init__(self, _gui=None):
         super().__init__()
         #state
         self.gui = _gui
-        self.turbo = _turbo
+        self.turbo = PfeifferTurboPumpSim()
         self.running = False
         self.thread_running = True
         self.cycle_count = 0
@@ -122,7 +173,7 @@ class CapillaryBakeStandControllerBase(Thread):
         self.running = True
         self.thread_running = True
         self.Go()
-        self.run()
+        #self.run()
     
     def Go(self):
         self.StartHeating()
@@ -222,12 +273,20 @@ class CapillaryBakeStandControllerBase(Thread):
             try:
                 if self.last_pressure >= self.turbo_pressure_too_high:
                     self.turbo.stop_pump()
+                    print(f"\nPressure too high: {self.last_pressure:.2e}, stopping turbo pump.")
+
                 elif self.last_pressure <= self.turbo_on_threshold and not self.turbo.is_pumping():
                     self.turbo.start_pump()
                 
-                self.turbo_speed = self.turbo.get_speed()
-                self.turbo_temperature = self.turbo.get_temperature()
-                self.turbo_power = self.turbo.get_power_usage()
+                turbo_speed = self.turbo.get_rotation_speed()
+                turbo_temperature = self.turbo.get_temperature()
+                turbo_power = self.turbo.get_power_usage()
+                if turbo_speed: 
+                    self.turbo_speed = turbo_speed
+                if turbo_temperature:
+                    self.turbo_temperature = turbo_temperature
+                if turbo_power:
+                    self.turbo_power = turbo_power
             except Exception as e:
                 print(f"\nError checking turbo pump: {e}")
 
@@ -263,11 +322,20 @@ class CapillaryBakeStandControllerBase(Thread):
                                 f"turbo speed: {self.turbo_speed}, "
                                 f"turbo temperature: {self.turbo_temperature}, "
                                 f"turbo power: {self.turbo_power}")
+                status_dict = {}
+                status_dict["cycle"] = f"{self.cycle_count}/{self.number_of_cycles_to_run}"
+                status_dict["state"] = state
+                status_dict["time_remaining"] = f"{minutes}:{seconds}"
+                status_dict["temperature"] = f"{self.last_temperature:.2f}C"
+                status_dict["pressure"] = f"{self.last_pressure:.2e}torr"
+                status_dict["turbo_speed"] = self.turbo_speed
+                status_dict["turbo_temperature"] = self.turbo_temperature
+                status_dict["turbo_power"] = self.turbo_power
                 if self.gui is None:
                     sys.stdout.write(f"\r{status_msg}   ")
                     sys.stdout.flush()
                 else:
-                    self.gui.update_status(f"{status_msg}")
+                    self.gui.update_status(status_dict)
                 #print(f"Cycle: {self.cycle_count}/{self.number_of_cycles_to_run}, State: {state}, Time remaining: {minutes}:{seconds}, Temperature: {self.last_temperature:.2f}C, Pressure: {self.last_pressure:.2e}torr",end="\r")
 
             except Exception as e:
@@ -328,6 +396,7 @@ from LabJackPython import TCVoltsToTemp, LJ_ttK, eDAC, eAIN
 class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
     def __init__(self):
         super().__init__()
+        self.turbo = PfeifferTurboPump()
         self.novion = NovionRGA()
         self.device = u3.U3()
         self.THERMOCOUPLE_VOLTAGE_GAIN = 51
