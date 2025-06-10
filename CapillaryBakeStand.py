@@ -10,20 +10,54 @@ from datetime import date
 import traceback
 from threading import Thread
 import sys
+#from turbo import PfeifferTurboPump
 
 MAX_DATA_POINTS = 2048
 def main():
-    #controller = CapillaryBakeStandControllerSimulator()
-    controller = CapillaryBakeStandController()
-
+    controller = CapillaryBakeStandControllerSimulator()
+    #controller = CapillaryBakeStandController()
+    gui = CapillaryBakeStandGui(controller)
+    controller.gui = gui
+    gui.mainloop()
     #switch which line is commented out for quick turn off oven turn on fan
-    controller.Start()    
+    #controller.Start()    
     #controller.StartCooling()
+
+class CapillaryBakeStandGui(tk.Tk):
+    def __init__(self, _controller):
+        super().__init__()
+        self.controller = _controller
+        self.title("Capillary Bake Stand Controller")
+        self.geometry("1200x75")
+        self.status = tk.StringVar(value="Idle")
+        self.status_label = tk.Label(self, textvariable=self.status, font=("Arial", 16))
+        self.status_label.pack(expand=True) 
+        self.start_button = tk.Button(self, text="Start", command=self.start_btn_clicked, font=("Arial", 14))
+        self.start_button.pack()
+        self.controller_thread = None
+    
+    def start_btn_clicked(self):
+        if self.start_button.cget("text") == "Start":
+            self.controller_thread = threading.Thread(target=self.controller.Start, daemon=True)
+            self.update_status("Starting...")
+            self.controller_thread.start()
+            self.start_button.config(text="Stop")
+        else:
+            self.update_status("Stopped")
+            self.controller.Stop()
+            self.start_button.config(text="Start")
+
+    def update_status(self, message):
+        self.after(0, self.status.set, message)
+
 
 
 class CapillaryBakeStandControllerBase(Thread):
-    def __init__(self):
+    def __init__(self, _gui=None, _turbo=None):
+        super().__init__()
         #state
+        self.gui = _gui
+        self.turbo = _turbo
         self.running = False
         self.thread_running = True
         self.cycle_count = 0
@@ -71,6 +105,12 @@ class CapillaryBakeStandControllerBase(Thread):
         self.LOGGING_PERIOD = 10 #seconds
         self.data_lock = threading.Lock()
 
+        self.turbo_on_threshold = 1e-2 #torr
+        self.turbo_pressure_too_high = 1e-1
+        self.turbo_speed = 0
+        self.turbo_temperature = 0
+        self.turbo_power = 0
+
     def Stop(self):
         self.running = False
         self.thread_running = False
@@ -102,32 +142,6 @@ class CapillaryBakeStandControllerBase(Thread):
 
     def TimeForNextLog(self):
         return time.time() - self.last_log_time >= self.LOGGING_PERIOD
-
-    def ControlLoop(self):
-        try:
-            self.control_loop_completed_event.clear()
-            self.last_control_loop_time = time.time()
-            if not self.manual_override:
-                if self.current_state == self.states["heating"] and time.time() - self.start_time >= self.HEATING_TIME:
-                    self.StartCooling()
-                elif self.current_state == self.states["cooling"] and time.time() - self.start_time >= self.COOLING_TIME:
-                    self.cycle_count += 1
-                    if self.cycle_count < self.number_of_cycles_to_run:
-                        self.StartHeating()
-                    else:
-                        self.Stop()
-
-            if self.logging_for_plotting_complete_event.is_set() or time.time() - self.last_log_for_plot_time >= self.LOGGING_THREAD_TIMEOUT:
-                threading.Thread(target=self.MeasureTemperaurePressure).start()
-
-            if (self.running and self.logging_complete_event.is_set() and self.TimeForNextLog()) or (time.time() - self.last_log_time >= self.CONTROL_LOOP_TIMEOUT):
-                threading.Thread(target=self.RGAScanAndSaveData).start()
-
-            self.control_loop_completed_event.set()
-        except Exception as e:
-            print(e)
-            self.Stop()
-            self.control_loop_completed_event.set()
 
 
     def RGAScanAndSaveData(self):
@@ -203,6 +217,20 @@ class CapillaryBakeStandControllerBase(Thread):
     def TurnHeaterOff(self):
         self.heater_on = False
     
+    def check_turbo(self):
+        if self.turbo is not None:
+            try:
+                if self.last_pressure >= self.turbo_pressure_too_high:
+                    self.turbo.stop_pump()
+                elif self.last_pressure <= self.turbo_on_threshold and not self.turbo.is_pumping():
+                    self.turbo.start_pump()
+                
+                self.turbo_speed = self.turbo.get_speed()
+                self.turbo_temperature = self.turbo.get_temperature()
+                self.turbo_power = self.turbo.get_power_usage()
+            except Exception as e:
+                print(f"\nError checking turbo pump: {e}")
+
     def run(self):
         while self.thread_running:
             try:
@@ -216,6 +244,7 @@ class CapillaryBakeStandControllerBase(Thread):
                         self.Stop()
                 self.MeasureTemperaurePressure()
                 self.RGAScanAndSaveData()
+                self.check_turbo()
                 time_elapsed = time.time() - self.start_time
                 time_remaining = 0
                 if self.current_state == self.states["heating"]:
@@ -230,9 +259,15 @@ class CapillaryBakeStandControllerBase(Thread):
                 status_msg = (f"Cycle: {self.cycle_count}/{self.number_of_cycles_to_run}, "
                                 f"State: {state}, Time remaining: {minutes}:{seconds}, "
                                 f"Temperature: {self.last_temperature:.2f}C, "
-                                f"Pressure: {self.last_pressure:.2e}torr")
-                sys.stdout.write(f"\r{status_msg}   ")
-                sys.stdout.flush()
+                                f"Pressure: {self.last_pressure:.2e}torr, "
+                                f"turbo speed: {self.turbo_speed}, "
+                                f"turbo temperature: {self.turbo_temperature}, "
+                                f"turbo power: {self.turbo_power}")
+                if self.gui is None:
+                    sys.stdout.write(f"\r{status_msg}   ")
+                    sys.stdout.flush()
+                else:
+                    self.gui.update_status(f"{status_msg}")
                 #print(f"Cycle: {self.cycle_count}/{self.number_of_cycles_to_run}, State: {state}, Time remaining: {minutes}:{seconds}, Temperature: {self.last_temperature:.2f}C, Pressure: {self.last_pressure:.2e}torr",end="\r")
 
             except Exception as e:
