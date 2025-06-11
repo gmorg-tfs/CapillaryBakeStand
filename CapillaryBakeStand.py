@@ -4,6 +4,7 @@ from Logger import *
 import tkinter as tk
 import threading
 import subprocess
+import random
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from novion import *
 from collections import deque
@@ -71,7 +72,9 @@ class CapillaryBakeStandGui(tk.Tk):
         ]
 
         for i, (var, _) in enumerate(status_labels):
-            tk.Label(status_frame, textvariable=var, font=("Arial", 12)).grid(row=i, column=0, padx=10, pady=5, sticky="w")        # Settings inputs
+            tk.Label(status_frame, textvariable=var, font=("Arial", 12)).grid(row=i, column=0, padx=10, pady=5, sticky="w")        
+        
+        # Settings inputs
         settings = [
             ("Total Cycles:", "number_of_cycles_to_run", "168"),  # 24 * 7 cycles by default
             ("Heating Time (min):", "HEATING_TIME", "20"),  # 20 min = 1200 sec
@@ -101,86 +104,16 @@ class CapillaryBakeStandGui(tk.Tk):
         # Layout control buttons
         for i, btn in enumerate([self.start_button, self.heat_button, self.cool_button, 
                                self.turbo_start_button, self.turbo_stop_button, self.plot_button]):
-            btn.grid(row=i, column=0, padx=10, pady=5)
-
+            btn.grid(row=i, column=0, padx=10, pady=5)        
+        
         # Configure grid weights
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
         self.grid_columnconfigure(2, weight=1)
 
-        # Start monitoring using Tkinter's after method
-        self.update_interval = 100  # milliseconds
-        self.after(self.update_interval, self.monitor_loop)
-
         # Initial button states
         self.update_button_states()
-    
-    def monitor_loop(self):
-        """Main monitoring and control loop using Tkinter's event loop."""
-        try:
-            # Run monitoring tasks
-            if self.controller.monitoring:
-                self.controller.monitor_conditions()
-            
-            # Handle cycling if active
-            if self.controller.running:
-                current_time = time.time()
-                if self.controller.current_state == self.controller.states["heating"]:
-                    if current_time - self.controller.start_time >= self.controller.HEATING_TIME:
-                        self.controller.StartCooling()
-                elif self.controller.current_state == self.controller.states["cooling"]:
-                    if current_time - self.controller.start_time >= self.controller.COOLING_TIME:
-                        self.controller.cycle_count += 1
-                        if self.controller.cycle_count < self.controller.number_of_cycles_to_run:
-                            self.controller.StartHeating()
-                        else:
-                            self.controller.Stop()
-            
-            # Update status
-            time_elapsed = time.time() - self.controller.start_time
-            time_remaining = 0
-            if self.controller.current_state == self.controller.states["heating"]:
-                time_remaining = self.controller.HEATING_TIME - time_elapsed
-            elif self.controller.current_state == self.controller.states["cooling"]:
-                time_remaining = self.controller.COOLING_TIME - time_elapsed
-
-            minutes = int(time_remaining // 60)
-            seconds = int(time_remaining % 60)
-            if seconds < 10:
-                seconds = f"0{seconds}"
-            
-            state = self.controller.figure_out_state()
-            status_dict = {
-                "cycle": f"{self.controller.cycle_count}/{self.controller.number_of_cycles_to_run}",
-                "state": state,
-                "time_remaining": f"{minutes}:{seconds}",
-                "temperature": f"{self.controller.last_temperature:.2f}C",
-                "pressure": f"{self.controller.last_pressure:.2e}torr",
-                "turbo_speed": self.controller.turbo_speed,
-                "turbo_temperature": self.controller.turbo_temperature,
-                "turbo_power": self.controller.turbo_power
-            }
-            
-            self.update(status_dict)
-
-        except Exception as e:
-            print(f"\nError in monitor loop: {e}")
-
-        # Schedule next update
-        self.after(self.update_interval, self.monitor_loop)
-
-    def periodic_update(self):
-        """Periodically update the GUI with controller state"""
-        try:
-            # Let the controller do its work
-            if self.controller.monitoring:
-                self.controller.update()
-        except Exception as e:
-            print(f"Error in periodic update: {e}")
-        finally:
-            # Schedule next update
-            self.after(100, self.periodic_update)
-
+        
     def update_button_states(self):
         # Update cycling button
         if self.cycling:
@@ -218,55 +151,71 @@ class CapillaryBakeStandGui(tk.Tk):
             self.turbo_stop_button.configure(state="disabled")
 
     def start_btn_clicked(self):
-        if not self.cycling:
-            self.controller.Start()
-            self.cycling = True
-            self.heating = True
-            self.cooling = False
-        else:
-            self.controller.Stop()
-            self.cycling = False
-            self.heating = False
-            self.cooling = False
-        self.update_button_states()
+        try:
+            if not self.cycling:
+                self.controller.Start()
+                self.cycling = True
+                self.heating = True
+                self.cooling = False
+            else:
+                self.controller.Stop()
+                self.cycling = False
+                self.heating = False
+                self.cooling = False
+            self.update_button_states()
+        except Exception as e:
+            print(f"Error in start button handler: {e}")
 
     def heat_btn_clicked(self):
-        if not self.heating:
-            self.controller.StartHeating()
-            self.heating = True
-            self.cooling = False
-        else:
-            self.controller.TurnHeaterOff()
-            self.heating = False
-            self.state_status.set("State: Idle")
-        self.update_button_states()
+        try:
+            if not self.heating:
+                self.controller.StartHeating()
+                self.heating = True
+                self.cooling = False
+            else:
+                self.controller.TurnHeaterOff()
+                self.heating = False
+                self.state_status.set("State: Idle")
+            self.update_button_states()
+        except Exception as e:
+            print(f"Error in heat button handler: {e}")
 
     def cool_btn_clicked(self):
-        if not self.cooling:
-            self.controller.StartCooling()
-            self.cooling = True
-            self.heating = False
-        else:
-            self.controller.TurnFanOff()
-            self.cooling = False
-            self.state_status.set("State: Idle")
-        self.update_button_states()
+        try:
+            if not self.cooling:
+                self.controller.StartCooling()
+                self.cooling = True
+                self.heating = False
+            else:
+                self.controller.TurnFanOff()
+                self.cooling = False
+                self.state_status.set("State: Idle")
+            self.update_button_states()
+        except Exception as e:
+            print(f"Error in cool button handler: {e}")
 
     def turbo_btn_clicked(self):
-        self.controller.check_turbo()
-        self.turbo_running = True
-        self.update_button_states()
+        try:
+            self.controller.start_turbo()
+            self.turbo_running = True
+            self.update_button_states()
+        except Exception as e:
+            print(f"Error starting turbo: {e}")
 
     def turbo_stop_clicked(self):
-        self.controller.turbo.stop_pump()
-        self.turbo_running = False
-        self.update_button_states()
+        try:
+            self.controller.stop_turbo()
+            self.turbo_running = False
+            self.update_button_states()
+        except Exception as e:
+            print(f"Error stopping turbo: {e}")
 
     def create_plots(self):
         try:
             subprocess.run(["python", "graph_stuff.py"], check=True)
         except subprocess.CalledProcessError:
-            print("Error creating plots")    
+            print("Error creating plots")
+            
     def apply_settings_clicked(self):
         try:
             # Apply all settings at once
@@ -280,37 +229,33 @@ class CapillaryBakeStandGui(tk.Tk):
                 else:
                     value = int(value)
                 setattr(self.controller, var_name, value)
-        except (ValueError, Exception):
-            # Silently ignore invalid values
-            pass
-
-    def update_controller_setting(self, var_name):
-        # This method is now empty as settings are only applied when the Apply button is clicked
-        pass
+        except Exception as e:
+            print(f"Error applying settings: {e}")
 
     def update(self, status_dict): 
-        self.cycle_status.set(f"Cycle: {status_dict['cycle']}")
-        self.state_status.set(f"State: {status_dict['state']}")
-        self.time_remaining_status.set(f"Time left: {status_dict['time_remaining']}")
-        self.temperature_status.set(f"Temperature: {status_dict['temperature']}°C")
-        self.pressure_status.set(f"Pressure: {status_dict['pressure']}")
-        self.water_content_status.set(f"Water Content: {self.controller.novion.get_water_content():.2e}")
-        self.turbo_speed_status.set(f"Turbo Speed: {status_dict['turbo_speed']} RPM")
-        self.turbo_temperature_status.set(f"Turbo Temperature: {status_dict['turbo_temperature']:.2f}°C")
-        self.turbo_power_status.set(f"Turbo Power: {status_dict['turbo_power']:.2f} W")
+        try:
+            self.cycle_status.set(f"Cycle: {status_dict['cycle']}")
+            self.state_status.set(f"State: {status_dict['state']}")
+            self.time_remaining_status.set(f"Time left: {status_dict['time_remaining']}")
+            self.temperature_status.set(f"Temperature: {status_dict['temperature']}°C")
+            self.pressure_status.set(f"Pressure: {status_dict['pressure']}")
+            self.water_content_status.set(f"Water Content: {status_dict.get('water_content', '0.00')}")
+            self.turbo_speed_status.set(f"Turbo Speed: {status_dict['turbo_speed']} RPM")
+            self.turbo_temperature_status.set(f"Turbo Temperature: {status_dict['turbo_temperature']:.2f}°C")
+            self.turbo_power_status.set(f"Turbo Power: {status_dict['turbo_power']:.2f} W")
 
-        # Update turbo state based on speed
-        if status_dict['turbo_speed'] > 0 and not self.turbo_running:
-            self.turbo_running = True
-            self.update_button_states()
-        elif status_dict['turbo_speed'] == 0 and self.turbo_running:
-            self.turbo_running = False
-            self.update_button_states()
+            # Update turbo state based on speed
+            if status_dict['turbo_speed'] > 0 and not self.turbo_running:
+                self.turbo_running = True
+                self.update_button_states()
+            elif status_dict['turbo_speed'] == 0 and self.turbo_running:
+                self.turbo_running = False
+                self.update_button_states()
+        except Exception as e:
+            print(f"Error updating GUI: {e}")
 
     def update_status(self, message):
         self.after(0, self.update, message)
-
-
 
 class CapillaryBakeStandControllerBase(Thread):
     def __init__(self, _gui=None):
@@ -338,7 +283,7 @@ class CapillaryBakeStandControllerBase(Thread):
         #data
         self.temperature_data = deque(maxlen=MAX_DATA_POINTS)
         self.pressure_data = deque(maxlen=MAX_DATA_POINTS)
-        self.time = deque(maxlen=MAX_DATA_POINTS)
+        self.time_data = deque(maxlen=MAX_DATA_POINTS)  # Renamed from 'time' to avoid shadowing built-in
         #novion 
         self.novion = NovionMock()
         self.logging_thread = threading.Thread(target=self.RGAScanAndSaveData)
@@ -400,7 +345,6 @@ class CapillaryBakeStandControllerBase(Thread):
 
     def Go(self):
         self.StartHeating()
-        #self.ControlLoop()
 
     def StartHeating(self):
         self.current_state = self.states["heating"]
@@ -419,13 +363,8 @@ class CapillaryBakeStandControllerBase(Thread):
 
 
     def RGAScanAndSaveData(self):
-        #pressure_novion = self.MeasurePressure()
         self.logging_complete_event.clear()
         try:
-            #if pressure_novion is None:
-            #    self.logging_complete_event.set()
-            #    return
-            #temperature_voltage_raw, temperature = self.MeasureTemperature()
             temperature = 0
             pressure = 0
             with self.data_lock:
@@ -438,8 +377,6 @@ class CapillaryBakeStandControllerBase(Thread):
                 self.last_log_time = time.time()
         except Exception as e:
             print(f"\nError scanning and saving data: {e}")
-        #self.last_pressure = pressure_novion
-        #self.last_temperature = temperature
         self.logging_complete_event.set()
 
     def MeasureTemperaurePressure(self):
@@ -459,7 +396,7 @@ class CapillaryBakeStandControllerBase(Thread):
             self.temperature_data.append(temperature)
             self.pressure_data.append(pressure_novion)
             time_struct = time.localtime()
-            self.time.append(f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}")
+            self.time_data.append(f"{time_struct.tm_hour}:{time_struct.tm_min}:{time_struct.tm_sec}")
             self.last_temperature = temperature
             self.last_pressure = pressure_novion
         self.last_log_for_plot_time = time.time()
@@ -467,16 +404,16 @@ class CapillaryBakeStandControllerBase(Thread):
 
     def TimeTemperaturePressure(self):
         with self.data_lock:
-            time = list(self.time)
+            time_data = list(self.time_data)
             temperature = list(self.temperature_data)   
             pressure = list(self.pressure_data)
-        return time, temperature, pressure
+        return time_data, temperature, pressure
 
     def MeasureTemperature(self):
-        Exception("Not Implemented")
+        raise Exception("Not Implemented")
 
     def MeasurePressure(self):
-        Exception("Not Implemented")
+        raise Exception("Not Implemented")
     
     def TurnOffHeaterAndCooler(self):
         self.TurnHeaterOff()
@@ -484,10 +421,13 @@ class CapillaryBakeStandControllerBase(Thread):
     
     def TurnFanOn(self):
         self.cooler_on = True
+    
     def TurnFanOff(self):
         self.cooler_on = False
+    
     def TurnHeaterOn(self):
         self.heater_on = True
+    
     def TurnHeaterOff(self):
         self.heater_on = False
     
@@ -519,7 +459,29 @@ class CapillaryBakeStandControllerBase(Thread):
                 if turbo_power:
                     self.turbo_power = turbo_power
             except Exception as e:
-                print(f"\nError checking turbo pump: {e}")    
+                print(f"\nError checking turbo pump: {e}")
+    
+    def start_turbo(self):
+        """Start the turbo pump manually."""
+        if self.turbo is not None:
+            try:
+                self.turbo.start_pump()
+                return True
+            except Exception as e:
+                print(f"\nError starting turbo pump: {e}")
+                return False
+        return False
+    
+    def stop_turbo(self):
+        """Stop the turbo pump manually."""
+        if self.turbo is not None:
+            try:
+                self.turbo.stop_pump()
+                return True
+            except Exception as e:
+                print(f"\nError stopping turbo pump: {e}")
+                return False
+        return False
 
     def monitor_conditions(self):
         """Monitor and control based on current conditions."""
@@ -566,44 +528,52 @@ class CapillaryBakeStandControllerBase(Thread):
 
     def update_gui(self):
         """Send current status to GUI."""
-        time_elapsed = time.time() - self.start_time
-        time_remaining = 0
-        if self.current_state == self.states["heating"]:
-            time_remaining = self.HEATING_TIME - time_elapsed
-        elif self.current_state == self.states["cooling"]:
-            time_remaining = self.COOLING_TIME - time_elapsed
+        try:
+            time_elapsed = time.time() - self.start_time
+            time_remaining = 0
+            if self.current_state == self.states["heating"]:
+                time_remaining = self.HEATING_TIME - time_elapsed
+            elif self.current_state == self.states["cooling"]:
+                time_remaining = self.COOLING_TIME - time_elapsed
 
-        minutes = int(time_remaining // 60)
-        seconds = int(time_remaining % 60)
-        if seconds < 10:
-            seconds = f"0{seconds}"
-        
-        state = self.figure_out_state()
-        status_dict = {
-            "cycle": f"{self.cycle_count}/{self.number_of_cycles_to_run}",
-            "state": state,
-            "time_remaining": f"{minutes}:{seconds}",
-            "temperature": f"{self.last_temperature:.2f}C",
-            "pressure": f"{self.last_pressure:.2e}torr",
-            "turbo_speed": self.turbo_speed,
-            "turbo_temperature": self.turbo_temperature,
-            "turbo_power": self.turbo_power
-        }
-        
-        # Use after_idle to update GUI from this thread
-        self.gui.after_idle(self.gui.update_status, status_dict)
-        
+            minutes = int(time_remaining // 60)
+            seconds = int(time_remaining % 60)
+            if seconds < 10:
+                seconds = f"0{seconds}"
+            
+            state = self.figure_out_state()
+            
+            # Create a complete status dictionary including water content
+            water_content = "0.00"
+            try:
+                water_content = f"{self.novion.get_water_content():.2e}"
+            except Exception:
+                pass
+                
+            status_dict = {
+                "cycle": f"{self.cycle_count}/{self.number_of_cycles_to_run}",
+                "state": state,
+                "time_remaining": f"{minutes}:{seconds}",
+                "temperature": f"{self.last_temperature:.2f}",
+                "pressure": f"{self.last_pressure:.2e}",
+                "water_content": water_content,
+                "turbo_speed": self.turbo_speed,
+                "turbo_temperature": self.turbo_temperature,
+                "turbo_power": self.turbo_power
+            }
+            
+            # Use after_idle to update GUI from this thread safely
+            self.gui.after_idle(self.gui.update_status, status_dict)
+        except Exception as e:
+            print(f"\nError updating GUI: {e}")
 
 
 class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
     def __init__(self):
         super().__init__()
-        #self.HEATING_TIME = 20  #seconds
-        #self.COOLING_TIME = 20  #seconds
-        #self.number_of_cycles_to_run = 1000
-    
+
     def RandomInstrumentResponseTime(self):
-        time.sleep(0.05 + random.random() % 0.5)
+        time.sleep(0.05 + random.random() * 0.5)
 
     def MeasureTemperature(self):
         self.RandomInstrumentResponseTime()
@@ -639,7 +609,6 @@ class CapillaryBakeStandControllerSimulator(CapillaryBakeStandControllerBase):
                 return self.last_pressure - (delta / 4)
             else:
                 return self.last_pressure
-            
 
 
 import u3
@@ -659,7 +628,6 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
         self.HEATER_VOLTAGE = 5 #volts
         self.COOLER_VOLTAGE = 5 #volts
    
-
     def Reconnect(self):
         try:
             self.device.close()
@@ -668,7 +636,6 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
         except Exception as e:
             return False
         
-
     def SetVoltageOnDac(self, channel, voltage):
         try:
             eDAC(self.device.handle, channel, voltage)
@@ -676,14 +643,12 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
         except Exception as e:
             return self.Reconnect()
 
-
     def ReadVoltage(self, channel):
         try:
             return eAIN(self.device.handle, channel)
         except Exception as e:
             self.Reconnect()
             return None
-
 
     def MeasureTemperature(self):
         voltage_raw = self.ReadVoltage(self.THERMOCOUPLE_CHANNEL)
@@ -712,7 +677,6 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
         self.cooler_on = True
         self.SetVoltageOnDac(self.COOLER_CHANNEL, self.COOLER_VOLTAGE)
 
-
     def TurnFanOff(self):
         self.cooler_on = False
         self.SetVoltageOnDac(self.COOLER_CHANNEL, 0)
@@ -728,12 +692,3 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
 
 if __name__ == "__main__":
     main()
-    """
-    try:
-        root = tk.Tk()
-        gui = CapillaryBakeStandGui(root)
-        gui.root.mainloop()
-    except Exception as e:
-        print(f"unhandeled exception: {e}")
-        traceback.print_exc()
-    """
