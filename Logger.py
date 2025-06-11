@@ -9,7 +9,7 @@ class Logger:
         self.header = _header
         self.buffer = []
         self.max_buffer_size = 10
-        self.create_new_file()
+        #self.create_new_file()
     
     def increment_file_number(self):
         self.file_name_number += 1

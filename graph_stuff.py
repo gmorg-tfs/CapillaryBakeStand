@@ -19,8 +19,9 @@ def load_data_from_file(path):
     rga = data[:, 3:79]
     return time, pressure, temperature, masses, rga
 
+file_path = "C:\\Data\\toaster\\2025_03_13_toaster_data_1.csv"
 
-file_path = get_most_recent_data_file("C:\\data\\toaster\\")
+#file_path = get_most_recent_data_file("C:\\data\\toaster\\")
 time, pressure, temperature, masses, rga = load_data_from_file(file_path)
 time = (time - time[0])/60
 
@@ -37,10 +38,10 @@ def plot_rga_mass_range(masses, rga, time):
 
 def plot_temperature_pressure(time, temperature, pressure):
     fig, ax1 = plt.subplots()
-    ax1.plot(time, temperature, "r.")
+    ax1.plot(time, temperature, "r")
     ax1.set_ylabel("Temperature (C)", color="r")
     ax2 = ax1.twinx()
-    ax2.plot(time, pressure, "b.")
+    ax2.plot(time, pressure, "b")
     ax2.set_ylabel("Pressure (mbar)", color="b")
     plt.xlabel("Time (min)")
 

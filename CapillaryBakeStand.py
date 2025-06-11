@@ -2,8 +2,9 @@ import time
 import matplotlib.pyplot as plt
 from Logger import *
 import tkinter as tk
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import threading
+import subprocess
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from novion import *
 from collections import deque
 from datetime import date
@@ -29,76 +30,214 @@ class CapillaryBakeStandGui(tk.Tk):
         self.controller = _controller
         self.title("Capillary Bake Stand Controller")
 
-        self.start_button = tk.Button(self, text="Start", command=self.start_btn_clicked, font=("Arial", 14))
+        # Create main frames for organization
+        control_frame = tk.LabelFrame(self, text="Controls", font=("Arial", 12))
+        status_frame = tk.LabelFrame(self, text="Status", font=("Arial", 12))
+        settings_frame = tk.LabelFrame(self, text="Settings", font=("Arial", 12))
 
-        self.turbo_start_button = tk.Button(self, text="Start Turbo", command=self.controller.check_turbo, font=("Arial", 14))
-        self.turbo_stop_button = tk.Button(self, text="Stop Turbo", command=self.controller.turbo.stop_pump, font=("Arial", 14))
+        # Control buttons
+        self.start_button = tk.Button(control_frame, text="Start Cycling", command=self.start_btn_clicked, width=20, font=("Arial", 12))
+        self.heat_button = tk.Button(control_frame, text="Start Heating", command=self.heat_btn_clicked, width=20, font=("Arial", 12))
+        self.cool_button = tk.Button(control_frame, text="Start Cooling", command=self.cool_btn_clicked, width=20, font=("Arial", 12))
+        self.turbo_start_button = tk.Button(control_frame, text="Start Turbo", command=self.turbo_btn_clicked, width=20, font=("Arial", 12))
+        self.turbo_stop_button = tk.Button(control_frame, text="Stop Turbo", command=self.turbo_stop_clicked, width=20, font=("Arial", 12))
+        self.plot_button = tk.Button(control_frame, text="Create Plots", command=self.create_plots, width=20, font=("Arial", 12))
 
+        # Status displays
         self.cycle_status = tk.StringVar(value="Cycle: 0/0")
-        self.cycle_label = tk.Label(self, textvariable=self.cycle_status, font=("Arial", 14))
-
         self.state_status = tk.StringVar(value="State: Idle")
-        self.state_label = tk.Label(self, textvariable=self.state_status, font=("Arial", 14))
-
         self.time_remaining_status = tk.StringVar(value="Time Remaining: 00:00")
-        self.time_remaining_label = tk.Label(self, textvariable=self.time_remaining_status, font=("Arial", 14))
-
-        self.temperature_status = tk.StringVar(value="Temperature: 0.00C")
-        self.temperature_label = tk.Label(self, textvariable=self.temperature_status, font=("Arial", 14))
-
+        self.temperature_status = tk.StringVar(value="Temperature: 0.00°C")
         self.pressure_status = tk.StringVar(value="Pressure: 0.00e-6 torr")
-        self.pressure_label = tk.Label(self, textvariable=self.pressure_status, font=("Arial", 14))
-
+        self.water_content_status = tk.StringVar(value="Water Content: 0.00")
         self.turbo_speed_status = tk.StringVar(value="Turbo Speed: 0 RPM")
-        self.turbo_speed_label = tk.Label(self, textvariable=self.turbo_speed_status, font=("Arial", 14))
-
-        self.turbo_temperature_status = tk.StringVar(value="Turbo Temperature: 0.00C")
-        self.turbo_temperature_label = tk.Label(self, textvariable=self.turbo_temperature_status, font=("Arial", 14))
-
+        self.turbo_temperature_status = tk.StringVar(value="Turbo Temperature: 0.00°C")
         self.turbo_power_status = tk.StringVar(value="Turbo Power: 0.00 W")
-        self.turbo_power_label = tk.Label(self, textvariable=self.turbo_power_status, font=("Arial", 14))
 
-        self.cycle_label.grid(row=0, column=0, padx=10, pady=10)
-        self.state_label.grid(row=1, column=0, padx=10, pady=10)
-        self.time_remaining_label.grid(row=2, column=0, padx=10, pady=10)
-        self.temperature_label.grid(row=3, column=0, padx=10, pady=10)
-        self.pressure_label.grid(row=4, column=0, padx=10, pady=10)
-        self.turbo_speed_label.grid(row=5, column=0, padx=10, pady=10)
-        self.turbo_temperature_label.grid(row=6, column=0, padx=10, pady=10)
-        self.turbo_power_label.grid(row=7, column=0, padx=10, pady=10)
+        # State tracking
+        self.cycling = False
+        self.heating = False
+        self.cooling = False
+        self.turbo_running = False
 
-        self.start_button.grid(row=0, column=1, padx=10, pady=10)
-        self.turbo_start_button.grid(row=1, column=1, padx=10, pady=10)
-        self.turbo_stop_button.grid(row=2, column=1, padx=10, pady=10)
+        status_labels = [
+            (self.cycle_status, "Cycle"),
+            (self.state_status, "State"),
+            (self.time_remaining_status, "Time Remaining"),
+            (self.temperature_status, "Temperature"),
+            (self.pressure_status, "Pressure"),
+            (self.water_content_status, "Water Content"),
+            (self.turbo_speed_status, "Turbo Speed"),
+            (self.turbo_temperature_status, "Turbo Temperature"),
+            (self.turbo_power_status, "Turbo Power")
+        ]
 
+        for i, (var, _) in enumerate(status_labels):
+            tk.Label(status_frame, textvariable=var, font=("Arial", 12)).grid(row=i, column=0, padx=10, pady=5, sticky="w")
+
+        # Settings inputs
+        settings = [
+            ("Total Cycles:", "number_of_cycles_to_run", "24"),
+            ("Heating Time (min):", "HEATING_TIME", "20"),
+            ("Cooling Time (min):", "COOLING_TIME", "40"),
+            ("Log Rate (sec):", "LOGGING_PERIOD", "10"),
+            ("Turbo Trip Level (torr):", "turbo_pressure_too_high", "1e-1"),
+            ("Turbo Start Level (torr):", "turbo_on_threshold", "1e-2")
+        ]
+
+        self.setting_vars = {}
+        for i, (label, var_name, default) in enumerate(settings):
+            tk.Label(settings_frame, text=label, font=("Arial", 12)).grid(row=i, column=0, padx=10, pady=5, sticky="e")
+            var = tk.StringVar(value=default)
+            self.setting_vars[var_name] = var
+            entry = tk.Entry(settings_frame, textvariable=var, font=("Arial", 12), width=10)
+            entry.grid(row=i, column=1, padx=10, pady=5, sticky="w")
+
+        # Layout frames
+        control_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        status_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+        settings_frame.grid(row=0, column=2, padx=10, pady=10, sticky="nsew")
+
+        # Layout control buttons
+        for i, btn in enumerate([self.start_button, self.heat_button, self.cool_button, 
+                               self.turbo_start_button, self.turbo_stop_button, self.plot_button]):
+            btn.grid(row=i, column=0, padx=10, pady=5)
+
+        # Configure grid weights
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_columnconfigure(2, weight=1)
+
+        # Start controller thread
         self.controller_thread = threading.Thread(target=self.controller.run, daemon=True)
         self.controller_thread.start()
 
-    
-    def start_btn_clicked(self):
-        if self.start_button.cget("text") == "Start":
-            #self.controller_thread = threading.Thread(target=self.controller.Start, daemon=True)
-            self.state_status.set("Starting...")
-            #self.controller_thread.start()
-            self.controller.Go()
-            self.start_button.config(text="Stop")
+        # Bind settings update
+        for var_name, var in self.setting_vars.items():
+            var.trace_add("write", lambda *args, vn=var_name: self.update_controller_setting(vn))
+
+        # Initial button states
+        self.update_button_states()
+
+    def update_button_states(self):
+        # Update cycling button
+        if self.cycling:
+            self.start_button.configure(text="Stop Cycling")
+            self.heat_button.configure(state="disabled")
+            self.cool_button.configure(state="disabled")
         else:
-            self.state_status.set("Stopping...")
-            #self.controller.Stop()
-            self.start_button.config(text="Start")
-        
+            self.start_button.configure(text="Start Cycling")
+            self.heat_button.configure(state="normal")
+            self.cool_button.configure(state="normal")
+
+        # Update heating/cooling buttons
+        if self.heating:
+            self.heat_button.configure(text="Stop Heating")
+            self.cool_button.configure(state="disabled")
+        else:
+            self.heat_button.configure(text="Start Heating")
+            if not self.cycling:
+                self.cool_button.configure(state="normal")
+
+        if self.cooling:
+            self.cool_button.configure(text="Stop Cooling")
+            self.heat_button.configure(state="disabled")
+        else:
+            self.cool_button.configure(text="Start Cooling")
+            if not self.cycling:
+                self.heat_button.configure(state="normal")
+
+        # Update turbo buttons
+        if self.turbo_running:
+            self.turbo_start_button.configure(state="disabled")
+            self.turbo_stop_button.configure(state="normal")
+        else:
+            self.turbo_start_button.configure(state="normal")
+            self.turbo_stop_button.configure(state="disabled")
+
+    def start_btn_clicked(self):
+        if not self.cycling:
+            self.controller.Start()
+            self.cycling = True
+            self.heating = True
+            self.cooling = False
+        else:
+            self.controller.Stop()
+            self.cycling = False
+            self.heating = False
+            self.cooling = False
+        self.update_button_states()
+
+    def heat_btn_clicked(self):
+        if not self.heating:
+            self.controller.StartHeating()
+            self.heating = True
+            self.cooling = False
+        else:
+            self.controller.TurnHeaterOff()
+            self.heating = False
+        self.update_button_states()
+
+    def cool_btn_clicked(self):
+        if not self.cooling:
+            self.controller.StartCooling()
+            self.cooling = True
+            self.heating = False
+        else:
+            self.controller.TurnFanOff()
+            self.cooling = False
+        self.update_button_states()
+
+    def turbo_btn_clicked(self):
+        self.controller.check_turbo()
+        self.turbo_running = True
+        self.update_button_states()
+
+    def turbo_stop_clicked(self):
+        self.controller.turbo.stop_pump()
+        self.turbo_running = False
+        self.update_button_states()
+
+    def create_plots(self):
+        try:
+            subprocess.run(["python", "graph_stuff.py"], check=True)
+        except subprocess.CalledProcessError:
+            print("Error creating plots")
+
+    def update_controller_setting(self, var_name):
+        try:
+            value = self.setting_vars[var_name].get()
+            if var_name in ["HEATING_TIME", "COOLING_TIME"]:
+                # Convert minutes to seconds
+                value = float(value) * 60
+            elif var_name in ["turbo_pressure_too_high", "turbo_on_threshold"]:
+                value = float(value)
+            else:
+                value = int(value)
+            setattr(self.controller, var_name, value)
+        except (ValueError, AttributeError):
+            pass  # Ignore invalid values
+
     def update(self, status_dict): 
         self.cycle_status.set(f"Cycle: {status_dict['cycle']}")
-        self.state_status.set(f"State: {status_dict["state"]}")
-        self.time_remaining_status.set(f"Time left: {status_dict["time_remaining"]}")
-        self.temperature_status.set(f"Temperature: {status_dict["temperature"]}")
-        self.pressure_status.set(f"Pressure: {status_dict["pressure"]}")
+        self.state_status.set(f"State: {status_dict['state']}")
+        self.time_remaining_status.set(f"Time left: {status_dict['time_remaining']}")
+        self.temperature_status.set(f"Temperature: {status_dict['temperature']}°C")
+        self.pressure_status.set(f"Pressure: {status_dict['pressure']}")
+        self.water_content_status.set(f"Water Content: {self.controller.novion.get_water_content():.2e}")
         self.turbo_speed_status.set(f"Turbo Speed: {status_dict['turbo_speed']} RPM")
-        self.turbo_temperature_status.set(f"Turbo Temperature: {status_dict['turbo_temperature']} C")
-        self.turbo_power_status.set(f"Turbo Power: {status_dict['turbo_power']} W")
+        self.turbo_temperature_status.set(f"Turbo Temperature: {status_dict['turbo_temperature']:.2f}°C")
+        self.turbo_power_status.set(f"Turbo Power: {status_dict['turbo_power']:.2f} W")
+
+        # Update turbo state based on speed
+        if status_dict['turbo_speed'] > 0 and not self.turbo_running:
+            self.turbo_running = True
+            self.update_button_states()
+        elif status_dict['turbo_speed'] == 0 and self.turbo_running:
+            self.turbo_running = False
+            self.update_button_states()
 
     def update_status(self, message):
-        #self.after(0, self.status.set, message)
         self.after(0, self.update, message)
 
 
@@ -172,6 +311,7 @@ class CapillaryBakeStandControllerBase(Thread):
         self.cycle_count = 0
         self.running = True
         self.thread_running = True
+        self.logger.create_new_file()
         self.Go()
         #self.run()
     
@@ -271,7 +411,7 @@ class CapillaryBakeStandControllerBase(Thread):
     def check_turbo(self):
         if self.turbo is not None:
             try:
-                if self.last_pressure >= self.turbo_pressure_too_high:
+                if self.turbo.is_pumping() and self.last_pressure >= self.turbo_pressure_too_high:
                     self.turbo.stop_pump()
                     print(f"\nPressure too high: {self.last_pressure:.2e}, stopping turbo pump.")
 
@@ -302,7 +442,8 @@ class CapillaryBakeStandControllerBase(Thread):
                     else:
                         self.Stop()
                 self.MeasureTemperaurePressure()
-                self.RGAScanAndSaveData()
+                if self.running and self.TimeForNextLog():
+                    self.RGAScanAndSaveData()
                 self.check_turbo()
                 time_elapsed = time.time() - self.start_time
                 time_remaining = 0
@@ -485,5 +626,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"unhandeled exception: {e}")
         traceback.print_exc()
-    """ 
-    
+    """

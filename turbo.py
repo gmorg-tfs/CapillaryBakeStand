@@ -48,69 +48,108 @@ class GUI(tk.Tk):
         self.after(1000, self.update)
 
 class PumpBase:
+    # Common parameters that represent real pump characteristics
+    MAX_SPEED = 1500  # Maximum RPM for this pump model
+    ROOM_TEMPERATURE = 25.0  # °C
+
+    def __init__(self):
+        # Common state
+        self._speed = 0
+        self._power = 0.0
+        self._temperature = self.ROOM_TEMPERATURE
+        self._pumping = False
+        self._last_update = time.time()
+
     def start_pump(self):
+        """Start the pump. Implementation should call _on_start() after hardware command."""
         raise NotImplementedError("start_pump must be implemented.")
 
     def stop_pump(self):
+        """Stop the pump. Implementation should call _on_stop() after hardware command."""
         raise NotImplementedError("stop_pump must be implemented.")
 
     def get_rotation_speed(self):
+        """Get current rotation speed."""
         raise NotImplementedError("get_rotation_speed must be implemented.")
 
     def get_power_usage(self):
+        """Get current power usage."""
         raise NotImplementedError("get_power_usage must be implemented.")
 
     def get_temperature(self):
+        """Get current temperature."""
         raise NotImplementedError("get_temperature must be implemented.")
-    
+
     def is_pumping(self):
-        try:
-            return self.get_rotation_speed() > 0
-        except Exception as e:
-            return False
+        """Check if pump is currently running."""
+        return self._pumping
+
+    def _on_start(self):
+        """Called after successful pump start."""
+        self._pumping = True
+
+    def _on_stop(self):
+        """Called after successful pump stop."""
+        self._pumping = False
 
 class PfeifferTurboPumpSim(PumpBase):
+    # Simulation-specific parameters
+    SPEED_INCREASE_RATE = 10  # RPM per update
+    SPEED_DECREASE_RATE = 20  # RPM per update
+    TEMPERATURE_CHANGE_RATE = 0.1  # °C per update
+    MAX_TEMPERATURE_RISE = 15.0  # Maximum °C above room temp
+    MAX_POWER = 50.0  # Maximum power usage in Watts
+
     def __init__(self):
-        self._speed = 0
-        self._power = 0.0
-        self._temperature = 25.0
-        self._pumping = False
+        super().__init__()
 
     def start_pump(self):
-        self._pumping = True
-        self._speed = 0
+        self._on_start()
 
     def stop_pump(self):
-        self._pumping = False
-        self._speed = 0
+        self._on_stop()
 
     def get_rotation_speed(self):
-        if self._pumping:
-            if self._speed < 1500:
-                self._speed += 10  # Simulate speed increase
+        self._update_sim_state()
         return self._speed
 
     def get_power_usage(self):
-        if self._pumping:
-            self._power = 50.0  # Simulate constant power usage
-        else:
-            self._power = 0.0
+        self._update_sim_state()
         return self._power
 
     def get_temperature(self):
-        # Simulate the temperature changing slowly
-        if self._pumping:
-            if self._temperature < 12:
-                self._temperature += 0.1
+        self._update_sim_state()
         return self._temperature
 
+    def _update_sim_state(self):
+        """Update simulated pump state."""
+        now = time.time()
+        dt = now - self._last_update
+        self._last_update = now
+
+        # Update speed based on pump state
+        if self._pumping:
+            if self._speed < self.MAX_SPEED:
+                self._speed = min(self.MAX_SPEED, self._speed + self.SPEED_INCREASE_RATE)
+        else:
+            if self._speed > 0:
+                self._speed = max(0, self._speed - self.SPEED_DECREASE_RATE)
+
+        # Update power based on speed
+        self._power = self.MAX_POWER * (self._speed / self.MAX_SPEED) if self._speed > 0 else 0.0
+
+        # Update temperature based on speed
+        target_temp = self.ROOM_TEMPERATURE + (self.MAX_TEMPERATURE_RISE * self._speed / self.MAX_SPEED)
+        if self._temperature < target_temp:
+            self._temperature = min(target_temp, self._temperature + self.TEMPERATURE_CHANGE_RATE)
+        elif self._temperature > target_temp:
+            self._temperature = max(target_temp, self._temperature - self.TEMPERATURE_CHANGE_RATE)
 
 class PfeifferTurboPump(PumpBase):
     import serial
-    import time
 
     def __init__(self, port='COM1', baudrate=9600, address=101):
-        import serial
+        super().__init__()
         self.address = str(address).zfill(3)
         self.ser = serial.Serial(
             port=port,
@@ -147,11 +186,11 @@ class PfeifferTurboPump(PumpBase):
 
     def _send_telegram(self, telegram):
         self.ser.write(telegram)
-        self.time.sleep(0.1)
+        time.sleep(0.1)
         response = b""
         while self.ser.in_waiting > 0:
             response += self.ser.read(self.ser.in_waiting)
-            self.time.sleep(0.05)
+            time.sleep(0.05)
         return response.decode('ascii')
 
     def _parse_response(self, response):
@@ -172,11 +211,10 @@ class PfeifferTurboPump(PumpBase):
             return {"error": f"Error parsing response: {str(e)}"}
 
     def _reconnect_if_needed(self):
-        # Basic attempt to reconnect if needed
         if self.failed_calls >= 2:
             try:
                 self.ser.close()
-                self.time.sleep(1)
+                time.sleep(1)
                 self.ser.open()
                 self.failed_calls = 0
             except Exception as e:
@@ -186,12 +224,16 @@ class PfeifferTurboPump(PumpBase):
         telegram = self._build_telegram(1, "010", "1", 6)
         response = self._send_telegram(telegram)
         parsed = self._parse_response(response)
+        if "data" in parsed:
+            self._on_start()
         return parsed
 
     def stop_pump(self):
         telegram = self._build_telegram(1, "010", "0", 6)
         response = self._send_telegram(telegram)
         parsed = self._parse_response(response)
+        if "data" in parsed:
+            self._on_stop()
         return parsed
 
     def get_rotation_speed(self):
@@ -199,24 +241,24 @@ class PfeifferTurboPump(PumpBase):
         response = self._send_telegram(telegram)
         parsed = self._parse_response(response)
         if "data" in parsed:
-            return int(parsed["data"])
-        else:
-            return None
+            self._speed = int(parsed["data"])
+            return self._speed
+        return None
 
     def get_power_usage(self):
         telegram = self._build_telegram(0, "316")
         response = self._send_telegram(telegram)
         parsed = self._parse_response(response)
         if "data" in parsed:
-            return float(parsed["data"])
-        else:
-            return None
+            self._power = float(parsed["data"])
+            return self._power
+        return None
 
     def get_temperature(self):
         telegram = self._build_telegram(0, "326")
         response = self._send_telegram(telegram)
         parsed = self._parse_response(response)
         if "data" in parsed:
-            return float(parsed["data"])
-        else:
-            return None
+            self._temperature = float(parsed["data"])
+            return self._temperature
+        return None
