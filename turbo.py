@@ -259,6 +259,7 @@ class PfeifferTurboPump(PumpBase):
         telegram = self._build_telegram(0, "316")
         response = self._send_telegram(telegram)
         parsed = self._parse_response(response)
+        #print(parsed)
         if "data" in parsed:
             self._power = float(parsed["data"])
             return self._power
@@ -275,6 +276,6 @@ class PfeifferTurboPump(PumpBase):
             return self._temperature
         return None
 
-#pump = PfeifferTurboPump(port='COM6', address=1)
+#pump = PfeifferTurboPump(port='COM4', address=1)
 #gui = GUI(pump)
 #gui.mainloop()

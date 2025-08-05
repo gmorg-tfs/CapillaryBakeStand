@@ -453,11 +453,11 @@ class CapillaryBakeStandControllerBase(Thread):
                 turbo_temperature = self.turbo.get_temperature()
                 turbo_power = self.turbo.get_power_usage()
                 #print(turbo_power)
-                if turbo_speed: 
+                if turbo_speed is not None: 
                     self.turbo_speed = turbo_speed
-                if turbo_temperature:
+                if turbo_temperature is not None:
                     self.turbo_temperature = turbo_temperature
-                if turbo_power:
+                if turbo_power is not None:
                     self.turbo_power = turbo_power
             except Exception as e:
                 print(f"\nError checking turbo pump: {e}")
