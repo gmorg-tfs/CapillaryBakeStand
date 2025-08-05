@@ -186,7 +186,9 @@ class PfeifferTurboPump(PumpBase):
 
     def _send_telegram(self, telegram,expect_response=True):
         try:
-            #print(telegram)
+            self.ser.reset_input_buffer()
+            self.ser.reset_output_buffer()
+
             self.ser.write(telegram)
             time.sleep(0.1)
             if expect_response:
@@ -227,38 +229,50 @@ class PfeifferTurboPump(PumpBase):
                 print(e)
 
     def start_pump(self):
-        telegram = self._build_telegram(1, "023", "1", 6)
-        response = self._send_telegram(telegram)
-        parsed = self._parse_response(response)
-        #print(telegram)
-        #print(response)
-        #print(parsed)
-
-        if "data" in parsed:
+        try:
+            telegram = self._build_telegram(1, "023", "1", 6)
+            response = self._send_telegram(telegram, expect_response=False)
+            #parsed = self._parse_response(response)
+            #print(telegram)
+            #print(response)
+            #print(parsed)
             self._on_start()
-        return parsed
 
+        except Exception as e:
+            print(f"Error starting pump: {e}")
+            
     def stop_pump(self):
-        telegram = self._build_telegram(1, "023", "0", 6)
-        response = self._send_telegram(telegram, expect_response=False)
-        #parsed = self._parse_response(response)
-        #if "data" in parsed:
-        self._on_stop()
+        try:
+            telegram = self._build_telegram(1, "023", "0", 6)
+            response = self._send_telegram(telegram, expect_response=False)
+            #parsed = self._parse_response(response)
+            #if "data" in parsed:
+            self._on_stop()
+        except Exception as e:
+            print(f"Error stopping pump: {e}")
         #return parsed
 
     def get_rotation_speed(self):
-        telegram = self._build_telegram(0, "309")
-        response = self._send_telegram(telegram)
-        parsed = self._parse_response(response)
+        try:
+            telegram = self._build_telegram(0, "309")
+            response = self._send_telegram(telegram)
+            parsed = self._parse_response(response)
+        except Exception as e:
+            print(f"Error getting rotation speed: {e}")
+            return None
         if "data" in parsed:
             self._speed = int(parsed["data"])
             return self._speed
         return None
 
     def get_power_usage(self):
-        telegram = self._build_telegram(0, "316")
-        response = self._send_telegram(telegram)
-        parsed = self._parse_response(response)
+        try:
+            telegram = self._build_telegram(0, "316")
+            response = self._send_telegram(telegram)
+            parsed = self._parse_response(response)
+        except Exception as e:
+            print(f"Error getting power usage: {e}")
+            return None
         #print(parsed)
         if "data" in parsed:
             self._power = float(parsed["data"])
@@ -266,11 +280,15 @@ class PfeifferTurboPump(PumpBase):
         return None
 
     def get_temperature(self):
-        telegram = self._build_telegram(0, "346")
-        #print(telegram)
-        response = self._send_telegram(telegram)
-        #print(response)
-        parsed = self._parse_response(response)
+        try:
+            telegram = self._build_telegram(0, "346")
+            #print(telegram)
+            response = self._send_telegram(telegram)
+            #print(response)
+            parsed = self._parse_response(response)
+        except Exception as e:
+            print(f"Error getting temperature: {e}")
+            return None
         if "data" in parsed:
             self._temperature = float(parsed["data"])
             return self._temperature
