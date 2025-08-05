@@ -16,8 +16,8 @@ from turbo import PfeifferTurboPump, PfeifferTurboPumpSim
 
 MAX_DATA_POINTS = 2048
 def main():
-    controller = CapillaryBakeStandControllerSimulator()
-    #controller = CapillaryBakeStandController()
+    #controller = CapillaryBakeStandControllerSimulator()
+    controller = CapillaryBakeStandController()
     gui = CapillaryBakeStandGui(controller)
     controller.gui = gui
     controller.start_monitoring()  # Start monitoring immediately
@@ -143,12 +143,12 @@ class CapillaryBakeStandGui(tk.Tk):
                 self.heat_button.configure(state="normal")
 
         # Update turbo buttons
-        if self.turbo_running:
-            self.turbo_start_button.configure(state="disabled")
-            self.turbo_stop_button.configure(state="normal")
-        else:
-            self.turbo_start_button.configure(state="normal")
-            self.turbo_stop_button.configure(state="disabled")
+        #if self.turbo_running:
+        #    self.turbo_start_button.configure(state="disabled")
+        #    self.turbo_stop_button.configure(state="normal")
+        #else:
+        #    self.turbo_start_button.configure(state="normal")
+        #    self.turbo_stop_button.configure(state="disabled")
 
     def start_btn_clicked(self):
         try:
@@ -446,12 +446,13 @@ class CapillaryBakeStandControllerBase(Thread):
                     self.turbo.stop_pump()
                     print(f"\nPressure too high: {self.last_pressure:.2e}, stopping turbo pump.")
 
-                elif self.last_pressure <= self.turbo_on_threshold and not self.turbo.is_pumping():
-                    self.turbo.start_pump()
+                #elif self.last_pressure <= self.turbo_on_threshold and not self.turbo.is_pumping():
+                #    self.turbo.start_pump()
                 
                 turbo_speed = self.turbo.get_rotation_speed()
                 turbo_temperature = self.turbo.get_temperature()
                 turbo_power = self.turbo.get_power_usage()
+                #print(turbo_power)
                 if turbo_speed: 
                     self.turbo_speed = turbo_speed
                 if turbo_temperature:
@@ -549,7 +550,7 @@ class CapillaryBakeStandControllerBase(Thread):
                 water_content = f"{self.novion.get_water_content():.2e}"
             except Exception:
                 pass
-                
+            #print(f"p: {self.turbo_power}")
             status_dict = {
                 "cycle": f"{self.cycle_count}/{self.number_of_cycles_to_run}",
                 "state": state,
@@ -616,8 +617,8 @@ from LabJackPython import TCVoltsToTemp, LJ_ttK, eDAC, eAIN
 class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
     def __init__(self):
         super().__init__()
-        self.turbo = PfeifferTurboPump()
-        self.novion = NovionRGA()
+        self.turbo = PfeifferTurboPump(port="COM6", address=1)
+        self.novion = NovionRGA(com_port="COM3")
         self.device = u3.U3()
         self.THERMOCOUPLE_VOLTAGE_GAIN = 51
         self.THERMOCOUPLE_VOLTAGE_OFFSET = 1.254 #volts

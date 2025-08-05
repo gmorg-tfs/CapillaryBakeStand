@@ -39,9 +39,9 @@ class GUI(tk.Tk):
             power = self.pump.get_power_usage()
             temperature = self.pump.get_temperature()
 
-            self.speed.set(f"Speed: {speed['speed']} {speed['unit']}")
-            self.power.set(f"Power: {power['power']} {power['unit']}")
-            self.temperature.set(f"Temperature: {temperature['temperature']} {temperature['unit']}")
+            self.speed.set(f"Speed: {speed}")
+            self.power.set(f"Power: {power}")
+            self.temperature.set(f"Temperature: {temperature}")
         except Exception as e:
             print(f"Error updating GUI: {e}")
         
@@ -148,7 +148,7 @@ class PfeifferTurboPumpSim(PumpBase):
 class PfeifferTurboPump(PumpBase):
     import serial
 
-    def __init__(self, port='COM1', baudrate=9600, address=101):
+    def __init__(self, port='COM6', baudrate=9600, address=1):
         super().__init__()
         self.address = str(address).zfill(3)
         self.ser = serial.Serial(
@@ -184,16 +184,22 @@ class PfeifferTurboPump(PumpBase):
         telegram += "\r"
         return telegram.encode('ascii')
 
-    def _send_telegram(self, telegram):
-        self.ser.write(telegram)
-        time.sleep(0.1)
-        response = b""
-        while self.ser.in_waiting > 0:
-            response += self.ser.read(self.ser.in_waiting)
-            time.sleep(0.05)
-        return response.decode('ascii')
+    def _send_telegram(self, telegram,expect_response=True):
+        try:
+            #print(telegram)
+            self.ser.write(telegram)
+            time.sleep(0.1)
+            if expect_response:
+                response = b""
+                while self.ser.in_waiting > 0:
+                    response += self.ser.read(self.ser.in_waiting)
+                    time.sleep(0.05)
+                return response.decode('ascii')
+        except Exception as e:
+            print(e)
 
     def _parse_response(self, response):
+        #print(response)
         if not response:
             return {"error": "No response received"}
         if "NO_DEF" in response:
@@ -221,20 +227,24 @@ class PfeifferTurboPump(PumpBase):
                 print(e)
 
     def start_pump(self):
-        telegram = self._build_telegram(1, "010", "1", 6)
+        telegram = self._build_telegram(1, "023", "1", 6)
         response = self._send_telegram(telegram)
         parsed = self._parse_response(response)
+        #print(telegram)
+        #print(response)
+        #print(parsed)
+
         if "data" in parsed:
             self._on_start()
         return parsed
 
     def stop_pump(self):
-        telegram = self._build_telegram(1, "010", "0", 6)
-        response = self._send_telegram(telegram)
-        parsed = self._parse_response(response)
-        if "data" in parsed:
-            self._on_stop()
-        return parsed
+        telegram = self._build_telegram(1, "023", "0", 6)
+        response = self._send_telegram(telegram, expect_response=False)
+        #parsed = self._parse_response(response)
+        #if "data" in parsed:
+        self._on_stop()
+        #return parsed
 
     def get_rotation_speed(self):
         telegram = self._build_telegram(0, "309")
@@ -255,10 +265,16 @@ class PfeifferTurboPump(PumpBase):
         return None
 
     def get_temperature(self):
-        telegram = self._build_telegram(0, "326")
+        telegram = self._build_telegram(0, "346")
+        #print(telegram)
         response = self._send_telegram(telegram)
+        #print(response)
         parsed = self._parse_response(response)
         if "data" in parsed:
             self._temperature = float(parsed["data"])
             return self._temperature
         return None
+
+#pump = PfeifferTurboPump(port='COM6', address=1)
+#gui = GUI(pump)
+#gui.mainloop()
