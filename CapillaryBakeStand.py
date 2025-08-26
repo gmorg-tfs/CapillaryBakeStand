@@ -211,10 +211,14 @@ class CapillaryBakeStandGui(tk.Tk):
             print(f"Error stopping turbo: {e}")
 
     def create_plots(self):
-        try:
-            subprocess.run(["python", "graph_stuff.py"], check=True)
-        except subprocess.CalledProcessError:
-            print("Error creating plots")
+        def run_plotting():
+            try:
+                subprocess.run(["python", "graph_stuff.py"], check=True)
+            except Exception as e:
+                print(f"error creating plots: {e}")
+        plot_thread = threading.Thread(target=run_plotting, daemon=True)
+        plot_thread.start()
+
             
     def apply_settings_clicked(self):
         try:
@@ -239,7 +243,7 @@ class CapillaryBakeStandGui(tk.Tk):
             self.time_remaining_status.set(f"Time left: {status_dict['time_remaining']}")
             self.temperature_status.set(f"Temperature: {status_dict['temperature']}°C")
             self.pressure_status.set(f"Pressure: {status_dict['pressure']}")
-            self.water_content_status.set(f"Water Content: {status_dict.get('water_content', '0.00')}")
+            self.water_content_status.set(f"Water Content %: {status_dict.get('water_content', '0.00')}")
             self.turbo_speed_status.set(f"Turbo Speed: {status_dict['turbo_speed']} RPM")
             self.turbo_temperature_status.set(f"Turbo Temperature: {status_dict['turbo_temperature']:.2f}°C")
             self.turbo_power_status.set(f"Turbo Power: {status_dict['turbo_power']:.2f} W")
@@ -547,7 +551,7 @@ class CapillaryBakeStandControllerBase(Thread):
             # Create a complete status dictionary including water content
             water_content = "0.00"
             try:
-                water_content = f"{self.novion.get_water_content():.2e}"
+                water_content = f"{self.novion.get_water_content()*100:.2f}"
             except Exception:
                 pass
             #print(f"p: {self.turbo_power}")
@@ -618,7 +622,7 @@ class CapillaryBakeStandController(CapillaryBakeStandControllerBase):
     def __init__(self):
         super().__init__()
         self.turbo = PfeifferTurboPump(port="COM6", address=1)
-        self.novion = NovionRGA(com_port="COM3")
+        self.novion = NovionRGA(com_port="COM8")
         self.device = u3.U3()
         self.THERMOCOUPLE_VOLTAGE_GAIN = 51
         self.THERMOCOUPLE_VOLTAGE_OFFSET = 1.254 #volts

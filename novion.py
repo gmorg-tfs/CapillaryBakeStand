@@ -143,7 +143,7 @@ class NovionMock(NovionBase):
         return self.mode
 
 class NovionRGA(NovionBase):
-    def __init__(self, com_port="COM4", baud_rate=115200):
+    def __init__(self, com_port="COM8", baud_rate=115200):
         super().__init__()
         self.com = com_port
         self.baud = baud_rate
