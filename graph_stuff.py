@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import glob
+import argparse
 
 #file_path = "C:\\data\\toaster\\toaster_data_24.csv"
 #file_path = "C:\\Data\\toaster\\2025_03_24_toaster_data_2.csv"
@@ -21,19 +22,12 @@ def load_data_from_file(path):
 
 #file_path = "C:\\Data\\toaster\\2025_03_13_toaster_data_1.csv"
 
-file_path = get_most_recent_data_file("C:\\data\\toaster\\")
-time, pressure, temperature, masses, rga = load_data_from_file(file_path)
-time = (time - time[0])/60
-
-
 def plot_rga_mass_range(masses, rga, time):
     data = np.zeros(len(rga))
     for m in masses:
         for i in range(len(data)-1):
             data[i] += rga[i, m-1]
     plt.plot(time, data, ".")
-
-    
 
 
 def plot_temperature_pressure(time, temperature, pressure):
@@ -45,18 +39,30 @@ def plot_temperature_pressure(time, temperature, pressure):
     ax2.set_ylabel("Pressure (mbar)", color="b")
     plt.xlabel("Time (min)")
 
-plot_rga_mass_range([3,4,5], rga, time)
-plot_rga_mass_range([17, 18, 19], rga, time)
-plot_rga_mass_range([27, 28, 29], rga, time)
-plot_rga_mass_range([31,32,33], rga, time)
-plot_rga_mass_range([43,44,45], rga, time)
-plt.legend(["He", "H2O", "N2", "O2", "CO2"])
-plt.xlabel("Time (min)")
-plt.ylabel("%")
-plot_temperature_pressure(time, temperature, pressure)
+def main(file_path=None):
+    if not file_path:
+        file_path = get_most_recent_data_file("C:\\data\\toaster\\")
+    time, pressure, temperature, masses, rga = load_data_from_file(file_path)
+    time = (time - time[0])/60
+
+    plot_rga_mass_range([3,4,5], rga, time)
+    plot_rga_mass_range([17, 18, 19], rga, time)
+    plot_rga_mass_range([27, 28, 29], rga, time)
+    plot_rga_mass_range([31,32,33], rga, time)
+    plot_rga_mass_range([43,44,45], rga, time)
+    plt.legend(["He", "H2O", "N2", "O2", "CO2"])
+    plt.xlabel("Time (min)")
+    plt.ylabel("%")
+    plot_temperature_pressure(time, temperature, pressure)
+
+    plt.show()
 
 
-plt.show()
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Plot toaster data")
+    parser.add_argument("--file", "-f", dest="file_path", help="Path to CSV file to plot")
+    args = parser.parse_args()
+    main(args.file_path)
 
 
 #rga mass 1 is column 0

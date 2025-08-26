@@ -2,6 +2,7 @@ import time
 import matplotlib.pyplot as plt
 from Logger import *
 import tkinter as tk
+from tkinter import filedialog
 import threading
 import subprocess
 import random
@@ -41,6 +42,7 @@ class CapillaryBakeStandGui(tk.Tk):
         self.turbo_start_button = tk.Button(control_frame, text="Start Turbo", command=self.turbo_btn_clicked, width=20, font=("Arial", 12))
         self.turbo_stop_button = tk.Button(control_frame, text="Stop Turbo", command=self.turbo_stop_clicked, width=20, font=("Arial", 12))
         self.plot_button = tk.Button(control_frame, text="Create Plots", command=self.create_plots, width=20, font=("Arial", 12))
+        self.plot_from_file_button = tk.Button(control_frame, text="Plot From File", command=self.create_plots_from_file, width=20, font=("Arial", 12))
 
         # Status displays
         self.cycle_status = tk.StringVar(value="Cycle: 0/0")
@@ -72,8 +74,8 @@ class CapillaryBakeStandGui(tk.Tk):
         ]
 
         for i, (var, _) in enumerate(status_labels):
-            tk.Label(status_frame, textvariable=var, font=("Arial", 12)).grid(row=i, column=0, padx=10, pady=5, sticky="w")        
-        
+            tk.Label(status_frame, textvariable=var, font=("Arial", 12)).grid(row=i, column=0, padx=10, pady=5, sticky="w")
+
         # Settings inputs
         settings = [
             ("Total Cycles:", "number_of_cycles_to_run", "168"),  # 24 * 7 cycles by default
@@ -81,7 +83,7 @@ class CapillaryBakeStandGui(tk.Tk):
             ("Cooling Time (min):", "COOLING_TIME", "40"),  # 40 min = 2400 sec
             ("Log Rate (sec):", "LOGGING_PERIOD", "10"),
             ("Turbo Trip Level (torr):", "turbo_pressure_too_high", "1e-1"),
-            ("Turbo Start Level (torr):", "turbo_on_threshold", "1e-2")
+            ("Turbo Start Level (torr):", "turbo_on_threshold", "1e-2"),
         ]
 
         self.setting_vars = {}
@@ -102,10 +104,17 @@ class CapillaryBakeStandGui(tk.Tk):
         settings_frame.grid(row=0, column=2, padx=10, pady=10, sticky="nsew")
 
         # Layout control buttons
-        for i, btn in enumerate([self.start_button, self.heat_button, self.cool_button, 
-                               self.turbo_start_button, self.turbo_stop_button, self.plot_button]):
-            btn.grid(row=i, column=0, padx=10, pady=5)        
-        
+        for i, btn in enumerate([
+            self.start_button,
+            self.heat_button,
+            self.cool_button,
+            self.turbo_start_button,
+            self.turbo_stop_button,
+            self.plot_button,
+            self.plot_from_file_button,
+        ]):
+            btn.grid(row=i, column=0, padx=10, pady=5)
+
         # Configure grid weights
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
@@ -213,11 +222,31 @@ class CapillaryBakeStandGui(tk.Tk):
     def create_plots(self):
         def run_plotting():
             try:
-                subprocess.run(["python", "graph_stuff.py"], check=True)
+                subprocess.run([sys.executable, "graph_stuff.py"], check=True)
             except Exception as e:
                 print(f"error creating plots: {e}")
         plot_thread = threading.Thread(target=run_plotting, daemon=True)
         plot_thread.start()
+
+    def create_plots_from_file(self):
+        try:
+            file_path = filedialog.askopenfilename(
+                title="Select data CSV",
+                filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")],
+                initialdir="C:\\Data\\toaster\\"
+            )
+            if not file_path:
+                return
+
+            def run_plotting(selected_file):
+                try:
+                    subprocess.run([sys.executable, "graph_stuff.py", "--file", selected_file], check=True)
+                except Exception as e:
+                    print(f"error creating plots: {e}")
+
+            threading.Thread(target=run_plotting, args=(file_path,), daemon=True).start()
+        except Exception as e:
+            print(f"error selecting plot file: {e}")
 
             
     def apply_settings_clicked(self):
